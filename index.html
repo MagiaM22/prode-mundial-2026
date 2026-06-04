@@ -737,6 +737,66 @@
     .gdt-player-slot.swap-selectable:hover { border-color: rgba(255,193,7,0.5); background: rgba(255,193,7,0.06); }
     .gdt-player-slot.swap-out { background: rgba(230,57,70,0.12) !important; border-color: rgba(230,57,70,0.5) !important; }
     .gdt-pool-item.swap-target:hover { background: rgba(255,193,7,0.1); border-color: rgba(255,193,7,0.4); }
+
+    /* ── Field visualization ── */
+    .gdt-field {
+      position: relative;
+      width: 100%;
+      max-width: 500px;
+      margin: 0 auto;
+      aspect-ratio: 0.68;
+      background: linear-gradient(135deg, #1a5f3f 0%, #0f3d20 50%, #1a5f3f 100%);
+      border: 3px solid var(--secondary);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .gdt-field::before {
+      content: '';
+      position: absolute;
+      width: 100%;
+      height: 2px;
+      top: 50%;
+      left: 0;
+      background: rgba(255,255,255,0.2);
+    }
+    .gdt-field::after {
+      content: '';
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(255,255,255,0.3);
+      border-radius: 50%;
+    }
+    .gdt-field-player {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 50px;
+      height: 50px;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.4);
+      border: 2px solid var(--secondary);
+      border-radius: 50%;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-align: center;
+      color: var(--secondary);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .gdt-field-player:hover {
+      background: rgba(0,0,0,0.6);
+      border-color: #fff;
+      transform: translate(-50%, -50%) scale(1.1);
+    }
+    .gdt-field-player .num { font-size: 0.65rem; font-weight: 800; }
+    .gdt-field-player .name { font-size: 0.55rem; color: var(--text); margin-top: 2px; }
+    .gdt-field-captain .num::before { content: '★ '; color: #ffc107; }
   </style>
 </head>
 <body>
@@ -975,6 +1035,7 @@
 
     <div class="gdt-tabs">
       <button class="gdt-tab active" id="gdttab-equipo" onclick="showGDTTab('equipo',this)">⚽ Mi Equipo</button>
+      <button class="gdt-tab" id="gdttab-cancha" onclick="showGDTTab('cancha',this)">🏟️ Cancha</button>
       <button class="gdt-tab" id="gdttab-tabla" onclick="showGDTTab('tabla',this)">🏆 Tabla GDT</button>
       <button class="gdt-tab" id="gdttab-stats" style="display:none" onclick="showGDTTab('stats',this)">📊 Stats <span class="admin-badge">ADMIN</span></button>
     </div>
@@ -1014,6 +1075,14 @@
           </div>
           <div class="gdt-pool-list" id="gdt-pool-list"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- CANCHA GDT -->
+    <div id="gdtpanel-cancha" style="display:none">
+      <div class="card">
+        <h2 style="margin:0 0 1rem 0">⚽ Tu Equipo en la Cancha</h2>
+        <div id="gdt-field-container"></div>
       </div>
     </div>
 
@@ -3222,7 +3291,7 @@ function renderGranDT() {
 }
 
 function showGDTTab(tab, btn) {
-  ['equipo','tabla','stats'].forEach(t => {
+  ['equipo','cancha','tabla','stats'].forEach(t => {
     const p = document.getElementById('gdtpanel-'+t);
     if (p) p.style.display = 'none';
     const b = document.getElementById('gdttab-'+t);
@@ -3231,8 +3300,63 @@ function showGDTTab(tab, btn) {
   const panel = document.getElementById('gdtpanel-'+tab);
   if (panel) panel.style.display = '';
   if (btn) btn.classList.add('active');
+  if (tab === 'cancha') renderGDTField();
   if (tab === 'tabla') renderGDTLeaderboard();
   if (tab === 'stats') renderGDTAdminStats();
+}
+
+function renderGDTField() {
+  const container = document.getElementById('gdt-field-container');
+  if (!container) return;
+
+  if (_gdtLineup.length === 0) {
+    container.innerHTML = '<p style="text-align:center;color:var(--text-muted)">Sin jugadores seleccionados</p>';
+    return;
+  }
+
+  const players = _gdtLineup.map(pid => ({...gdtPlayerById(pid), isCaptain: _gdtCaptain === pid}));
+
+  const byPos = { GK: [], DEF: [], MED: [], DEL: [] };
+  players.forEach(p => { if (byPos[p.pos]) byPos[p.pos].push(p); });
+
+  let playersList = [];
+  let playerNum = 1;
+
+  byPos.GK.forEach(p => { playersList.push({...p, num: playerNum++}); });
+  byPos.DEF.forEach(p => { playersList.push({...p, num: playerNum++}); });
+  byPos.MED.forEach(p => { playersList.push({...p, num: playerNum++}); });
+  byPos.DEL.forEach(p => { playersList.push({...p, num: playerNum++}); });
+
+  const fieldHTML = `
+    <div class="gdt-field">
+      ${playersList.map(p => {
+        let top = 50, left = 50;
+        if (p.pos === 'GK') {
+          top = 50; left = 10;
+        } else if (p.pos === 'DEF') {
+          const idx = byPos.DEF.indexOf(p);
+          const cnt = byPos.DEF.length;
+          top = 78; left = 20 + (60 / (cnt + 1)) * (idx + 1);
+        } else if (p.pos === 'MED') {
+          const idx = byPos.MED.indexOf(p);
+          const cnt = byPos.MED.length;
+          top = 50; left = 20 + (60 / (cnt + 1)) * (idx + 1);
+        } else {
+          const idx = byPos.DEL.indexOf(p);
+          const cnt = byPos.DEL.length;
+          top = 22; left = 20 + (60 / (cnt + 1)) * (idx + 1);
+        }
+        return `<div class="gdt-field-player ${p.isCaptain ? 'gdt-field-captain' : ''}" style="top:${top}%;left:${left}%" title="${p.nombre}"><span class="num">${String(p.num).padStart(2,'0')}</span><span class="name">${p.nombre.split(' ').pop().substring(0,7)}</span></div>`;
+      }).join('')}
+    </div>
+    <div style="margin-top:1rem;display:grid;grid-template-columns:repeat(4,1fr);gap:0.5rem;font-size:0.8rem">
+      <div style="padding:0.5rem;background:rgba(255,255,255,0.04);border-radius:6px"><strong>${byPos.GK.length}</strong> GK</div>
+      <div style="padding:0.5rem;background:rgba(255,255,255,0.04);border-radius:6px"><strong>${byPos.DEF.length}</strong> DEF</div>
+      <div style="padding:0.5rem;background:rgba(255,255,255,0.04);border-radius:6px"><strong>${byPos.MED.length}</strong> MED</div>
+      <div style="padding:0.5rem;background:rgba(255,255,255,0.04);border-radius:6px"><strong>${byPos.DEL.length}</strong> DEL</div>
+    </div>
+  `;
+  container.innerHTML = fieldHTML;
 }
 
 // ── Budget bar ──
