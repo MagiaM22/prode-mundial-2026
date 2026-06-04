@@ -3355,37 +3355,33 @@ function renderGDTField() {
         <line x1="0" y1="100" x2="200" y2="100" stroke="rgba(255,255,255,0.2)" stroke-width="0.5"/>
       </svg>
       ${[
-        ...byPos.GK.map((p, i) => ({...p, top: 88, left: 50})),
+        ...byPos.GK.map((p, i) => ({...p, top: 90, left: 50})),
         ...byPos.DEF.map((p, i) => {
           const cnt = byPos.DEF.length;
           let left;
-          if (cnt === 4) {
-            left = [25, 40, 60, 75][i];
-          } else if (cnt === 3) {
-            left = [30, 50, 70][i];
-          } else if (cnt === 5) {
-            left = [15, 35, 50, 65, 85][i];
-          } else {
-            left = 20 + (60 / (cnt + 1)) * (i + 1);
-          }
-          return {...p, top: 68, left};
+          if (cnt === 5) left = [10, 28, 50, 72, 90][i];
+          else if (cnt === 4) left = [20, 38, 62, 80][i];
+          else if (cnt === 3) left = [25, 50, 75][i];
+          else left = 20 + (60 / (cnt + 1)) * (i + 1);
+          return {...p, top: 70, left};
         }),
         ...byPos.MED.map((p, i) => {
           const cnt = byPos.MED.length;
           let top, left;
-          if (cnt === 4) {
-            if (i === 0) { top = 50; left = 50; } // CDM
-            else if (i === 1 || i === 2) { top = 42; left = [35, 65][i-1]; } // CM
-            else { top = 35; left = [25, 75][i-2]; } // Wing
+          if (cnt === 5) {
+            top = [55, 48, 48, 42, 42][i];
+            left = [50, 28, 72, 15, 85][i];
+          } else if (cnt === 4) {
+            top = [55, 48, 48, 42][i];
+            left = [50, 30, 70, 50][i];
           } else if (cnt === 3) {
-            top = [50, 42, 42][i];
-            left = [50, 35, 65][i];
-          } else if (cnt === 5) {
-            const pos = [0, 1, 2, 3, 4]; // CDM, CM, CM, LW, RW
-            top = [50, 42, 42, 35, 35][i];
-            left = [50, 35, 65, 20, 80][i];
+            top = [52, 45, 45][i];
+            left = [50, 25, 75][i];
+          } else if (cnt === 2) {
+            top = [50, 50][i];
+            left = [35, 65][i];
           } else {
-            top = 45; left = 20 + (60 / (cnt + 1)) * (i + 1);
+            top = 50; left = 50;
           }
           return {...p, top, left};
         }),
@@ -3393,15 +3389,13 @@ function renderGDTField() {
           const cnt = byPos.DEL.length;
           let top, left;
           if (cnt === 3) {
-            top = [30, 22, 22][i];
-            left = [50, 30, 70][i];
+            top = [28, 28, 28][i];
+            left = [50, 25, 75][i];
           } else if (cnt === 2) {
-            top = [25, 25][i];
-            left = [35, 65][i];
-          } else if (cnt === 1) {
-            top = 25; left = 50;
+            top = [30, 30][i];
+            left = [30, 70][i];
           } else {
-            top = 25; left = 25 + (50 / (cnt + 1)) * (i + 1);
+            top = 30; left = 50;
           }
           return {...p, top, left};
         })
