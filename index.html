@@ -3314,7 +3314,7 @@ function renderGDTField() {
     return;
   }
 
-  const players = _gdtLineup.map(pid => ({...gdtPlayerById(pid), isCaptain: _gdtCaptain === pid}));
+  const players = _gdtLineup.map(pid => ({...gdtPlayerById(pid), isCaptain: _gdtCaptainId === pid}));
 
   const byPos = { GK: [], DEF: [], MED: [], DEL: [] };
   players.forEach(p => { if (byPos[p.pos]) byPos[p.pos].push(p); });
