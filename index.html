@@ -1075,6 +1075,7 @@
           </div>
           <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
             <span id="gdt-captain-label" style="font-size:0.78rem;color:var(--secondary)"></span>
+            <button class="btn btn-ghost btn-sm" onclick="showGDTRules()">📖 ¿Cómo se puntúa?</button>
             <button class="btn btn-gold btn-sm" onclick="saveGDTTeam()">💾 Guardar equipo</button>
           </div>
         </div>
@@ -1084,6 +1085,18 @@
         <div id="gdt-validation-msg" style="font-size:0.78rem;margin-top:0.4rem;min-height:1.1em"></div>
         <div id="gdt-transfer-status" style="margin-top:0.5rem"></div>
       </div>
+
+      <!-- Modal: cómo se puntúa -->
+      <div id="gdt-rules-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:2000;align-items:center;justify-content:center;padding:1rem" onclick="if(event.target===this)hideGDTRules()">
+        <div style="background:#1a1d24;border:1px solid var(--border);border-radius:12px;max-width:480px;width:100%;max-height:85vh;overflow-y:auto;padding:1.2rem">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.9rem">
+            <h3 style="margin:0;color:var(--secondary);font-size:1.05rem">📖 Cómo se puntúa</h3>
+            <button class="btn btn-ghost btn-sm" onclick="hideGDTRules()">✕</button>
+          </div>
+          <div id="gdt-rules-body"></div>
+        </div>
+      </div>
+
       <div class="gdt-layout">
         <div class="gdt-team-col">
           <div id="gdt-team-slots"></div>
@@ -4194,7 +4207,7 @@ function renderGDTPool() {
       const hint       = overBudget ? `+${newBudget - GDT_BUDGET} fichas` : `${p.precio}🪙`;
       const action     = _gdtSwapOut && !overBudget ? `onclick="executeSwap('${p.id}')"` : '';
       return `<div class="gdt-pool-item ${cls}" ${action}>
-        <span class="gdt-pool-flag">${p.flag}</span>
+        <span class="gdt-pool-flag">${p.flag}</span>${gdtContinentBadge(p.seleccion)}
         <div class="gdt-pool-info">
           <div class="gdt-pool-name">${esc(p.nombre)}</div>
           <div class="gdt-pool-sel">${esc(p.seleccion)}</div>
@@ -4210,7 +4223,7 @@ function renderGDTPool() {
     const wouldExceed = !isSelected && ((!canStarter && !canBench) || budget + p.precio > GDT_BUDGET);
     const cls = isSelected ? 'selected' : (wouldExceed ? 'disabled' : '');
     return `<div class="gdt-pool-item ${cls}" onclick="toggleGDTPlayer('${p.id}')">
-      <span class="gdt-pool-flag">${p.flag}</span>
+      <span class="gdt-pool-flag">${p.flag}</span>${gdtContinentBadge(p.seleccion)}
       <div class="gdt-pool-info">
         <div class="gdt-pool-name">${esc(p.nombre)}</div>
         <div class="gdt-pool-sel">${esc(p.seleccion)}</div>
@@ -4219,6 +4232,45 @@ function renderGDTPool() {
       <span class="gdt-pool-price">${p.precio}🪙</span>
     </div>`;
   }).join('');
+}
+
+// Selecciones que muestran el símbolo de continente (África 🌍) + Francia
+const GDT_AFRICA = new Set(['Marruecos','Senegal','Ghana','Costa de Marfil','Egipto','Argelia','Túnez','Sudáfrica','R.D. del Congo','Cabo Verde','Francia']);
+function gdtContinentBadge(seleccion) {
+  return GDT_AFRICA.has(seleccion) ? '<span title="África" style="margin-left:3px;font-size:0.9em">🌍</span>' : '';
+}
+
+// ---- Modal "Cómo se puntúa" (la tabla se arma sola desde GDT_PTS) ----
+function renderGDTRules() {
+  const rows = [
+    ['⚽ Gol','goal'], ['🅰️ Asistencia','assist'], ['🛡️ Valla invicta','cleanSheet'],
+    ['🟨 Amarilla','yellow'], ['🟥 Roja','red'], ['😖 Gol en contra','ownGoal'],
+    ['⭐ Figura (MVP)','mvp'], ["⏱️ Jugar 60'+",'minutes'],
+  ];
+  const pos = ['GK','DEF','MED','DEL'];
+  const head = '<tr><th style="text-align:left;padding:4px 6px;color:var(--text-muted)">Acción</th>' +
+    pos.map(p => `<th style="padding:4px 6px;color:var(--secondary)">${p}</th>`).join('') + '</tr>';
+  const body = rows.map(([label,key]) => {
+    const cells = pos.map(pp => {
+      const v = GDT_PTS[pp][key];
+      const col = v > 0 ? '#7fd17f' : (v < 0 ? '#e06666' : '#777');
+      const txt = v === 0 ? '—' : (v > 0 ? '+'+v : ''+v);
+      return `<td style="text-align:center;padding:4px 6px;color:${col};font-weight:700">${txt}</td>`;
+    }).join('');
+    return `<tr style="border-top:1px solid var(--border)"><td style="text-align:left;padding:4px 6px">${label}</td>${cells}</tr>`;
+  }).join('');
+  const notes = `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:0.9rem;line-height:1.6">
+    • El <b style="color:var(--secondary)">capitán ⭐</b> suma <b>el doble</b> de puntos.<br>
+    • Si un titular no juega, entra automáticamente un <b>suplente</b> del mismo puesto.<br>
+    • La <b>valla invicta</b> (puntos para GK y DEF) cuenta solo si tu equipo no recibió goles.</div>`;
+  return `<table style="width:100%;border-collapse:collapse;font-size:0.85rem"><thead>${head}</thead><tbody>${body}</tbody></table>${notes}`;
+}
+function showGDTRules() {
+  document.getElementById('gdt-rules-body').innerHTML = renderGDTRules();
+  document.getElementById('gdt-rules-modal').style.display = 'flex';
+}
+function hideGDTRules() {
+  document.getElementById('gdt-rules-modal').style.display = 'none';
 }
 
 function toggleGDTPlayer(id) {
