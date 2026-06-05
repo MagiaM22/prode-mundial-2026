@@ -838,6 +838,9 @@
           onkeydown="if(event.key==='Enter') doLogin()">
       </div>
       <button class="btn btn-gold" style="width:100%" onclick="doLogin()">Ingresar</button>
+      <div style="text-align:center;margin-top:0.7rem">
+        <a href="javascript:void(0)" onclick="doForgotPassword()" style="font-size:0.8rem;color:var(--text-muted);text-decoration:underline;cursor:pointer">¿Olvidaste tu contraseña?</a>
+      </div>
     </div>
 
     <!-- Register -->
@@ -861,6 +864,17 @@
         <input type="password" id="reg-pwd" placeholder="Mínimo 6 caracteres">
       </div>
       <button class="btn btn-gold" style="width:100%" onclick="doRegister()">Crear cuenta</button>
+    </div>
+
+    <!-- Recuperar contraseña -->
+    <div id="form-recovery" style="display:none">
+      <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 0.8rem;text-align:center">Elegí tu nueva contraseña 🔑</p>
+      <div class="form-group">
+        <label>Nueva contraseña</label>
+        <input type="password" id="rec-pwd" placeholder="Mínimo 6 caracteres"
+          onkeydown="if(event.key==='Enter') doUpdatePassword()">
+      </div>
+      <button class="btn btn-gold" style="width:100%" onclick="doUpdatePassword()">Guardar nueva contraseña</button>
     </div>
 
     <div id="auth-error" class="auth-msg error"></div>
@@ -1392,16 +1406,23 @@ let activeTournament = { id: DEFAULT_TOURNAMENT_ID, name: 'Mundial 2026 - Fase d
 // ============================================================
 // AUTH
 // ============================================================
+let _recovering = false;
+
 async function initApp() {
+  const isRecovery = window.location.hash.includes('type=recovery');
   const { data: { session } } = await sb.auth.getSession();
-  if (session?.user) {
+  if (isRecovery) {
+    showRecoveryForm();
+  } else if (session?.user) {
     await onUserReady(session.user);
   } else {
     document.getElementById('auth-overlay').style.display = 'flex';
   }
 
   sb.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'SIGNED_IN' && session?.user && !currentUser) {
+    if (event === 'PASSWORD_RECOVERY') {
+      showRecoveryForm();
+    } else if (event === 'SIGNED_IN' && session?.user && !currentUser && !_recovering) {
       await onUserReady(session.user);
     } else if (event === 'SIGNED_OUT') {
       currentUser = currentProfile = null;
@@ -1411,6 +1432,18 @@ async function initApp() {
       document.getElementById('auth-overlay').style.display = 'flex';
     }
   });
+}
+
+// Muestra la pantalla para elegir contraseña nueva (al volver del mail de recuperación)
+function showRecoveryForm() {
+  _recovering = true;
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('auth-overlay').style.display = 'flex';
+  document.getElementById('form-login').style.display = 'none';
+  document.getElementById('form-register').style.display = 'none';
+  document.querySelector('.auth-tabs').style.display = 'none';
+  document.getElementById('form-recovery').style.display = '';
+  setAuthMsg('', '');
 }
 
 async function onUserReady(user) {
@@ -1490,6 +1523,33 @@ async function doRegister() {
   } else {
     setAuthMsg('', '✅ Cuenta creada. Revisá tu email para confirmar y luego ingresá.');
   }
+}
+
+// Manda el mail de recuperación al email escrito en el campo de login
+async function doForgotPassword() {
+  const email = document.getElementById('login-email').value.trim();
+  if (!email) { setAuthMsg('Escribí tu email arriba y volvé a tocar el link.', ''); return; }
+  setAuthMsg('', '');
+  const redirectTo = window.location.origin + window.location.pathname;
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
+  if (error) { setAuthMsg(error.message, ''); return; }
+  setAuthMsg('', '📧 Te mandamos un mail a ' + email + ' para resetear la contraseña. Revisá también el spam.');
+}
+
+// Guarda la contraseña nueva (ya hay una sesión temporal del link de recuperación)
+async function doUpdatePassword() {
+  const pwd = document.getElementById('rec-pwd').value;
+  if (!pwd || pwd.length < 6) { setAuthMsg('La contraseña debe tener al menos 6 caracteres.', ''); return; }
+  setAuthMsg('', '');
+  const { error } = await sb.auth.updateUser({ password: pwd });
+  if (error) { setAuthMsg(error.message, ''); return; }
+  _recovering = false;
+  history.replaceState(null, '', window.location.pathname);
+  document.querySelector('.auth-tabs').style.display = '';
+  document.getElementById('form-recovery').style.display = 'none';
+  setAuthMsg('', '✅ ¡Contraseña actualizada! Entrando...');
+  const { data: { user } } = await sb.auth.getUser();
+  if (user) await onUserReady(user);
 }
 
 async function doLogout() {
