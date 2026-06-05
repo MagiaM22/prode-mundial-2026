@@ -1533,7 +1533,23 @@ async function doForgotPassword() {
   const redirectTo = window.location.origin + window.location.pathname;
   const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
   if (error) { setAuthMsg(error.message, ''); return; }
-  setAuthMsg('', '📧 Te mandamos un mail a ' + email + ' para resetear la contraseña. Revisá también el spam.');
+  document.getElementById('form-login').style.display = 'none';
+  document.querySelector('.auth-tabs').style.display = 'none';
+  document.getElementById('auth-info').style.display = 'none';
+  const msgDiv = document.createElement('div');
+  msgDiv.id = 'forgot-success';
+  msgDiv.innerHTML = `
+    <div style="text-align:center;padding:1rem 0">
+      <div style="font-size:3rem;margin-bottom:0.75rem">📧</div>
+      <div style="font-size:1.05rem;font-weight:700;color:var(--secondary);margin-bottom:0.5rem">¡Mail enviado!</div>
+      <div style="font-size:0.88rem;color:var(--text-muted);margin-bottom:1.25rem">Te mandamos un link a <strong style="color:var(--text)">${email}</strong> para resetear tu contraseña.<br>Revisá también el spam.</div>
+      <button class="btn btn-ghost" style="width:100%" onclick="
+        document.getElementById('forgot-success').remove();
+        document.getElementById('form-login').style.display='';
+        document.querySelector('.auth-tabs').style.display='';
+      ">← Volver al login</button>
+    </div>`;
+  document.querySelector('.auth-card').insertBefore(msgDiv, document.getElementById('auth-error'));
 }
 
 // Guarda la contraseña nueva (ya hay una sesión temporal del link de recuperación)
