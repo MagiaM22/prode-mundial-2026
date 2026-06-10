@@ -1488,6 +1488,10 @@ async function onUserReady(user) {
   // Show admin nav button
   if (isAdmin) document.getElementById('nav-resultados').style.display = '';
 
+  // Check for invite code in URL
+  const joinCode = new URLSearchParams(window.location.search).get('join');
+  if (joinCode) await joinTournamentByCode(joinCode, user);
+
   // Load all data then render home
   await loadAllData();
   updateTournamentChip();
@@ -1596,7 +1600,11 @@ async function loadAllData() {
 }
 
 async function loadTournaments() {
-  const { data } = await sb.from('tournaments').select('*').order('created_at');
+  const { data: memberOf } = await sb.from('tournament_members')
+    .select('tournament_id').eq('user_id', currentUser.id);
+  const ids = (memberOf || []).map(m => m.tournament_id);
+  if (ids.length === 0) { _tournaments = []; return; }
+  const { data } = await sb.from('tournaments').select('*').in('id', ids).order('created_at');
   _tournaments = data || [];
 }
 
@@ -2409,10 +2417,12 @@ async function createTorneo() {
   const name = document.getElementById('torneo-name').value.trim();
   const desc = document.getElementById('torneo-desc').value.trim();
   if (!name) { showToast('❌ Ingresá el nombre del torneo'); return; }
+  const invite_code = Math.random().toString(36).substring(2, 10).toUpperCase();
   const { data, error } = await sb.from('tournaments')
-    .insert({ name, description: desc, created_by: currentUser.id })
+    .insert({ name, description: desc, created_by: currentUser.id, invite_code })
     .select().maybeSingle();
   if (error) { showToast('❌ Error: ' + error.message); return; }
+  await sb.from('tournament_members').insert({ tournament_id: data.id, user_id: currentUser.id });
   _tournaments = null;
   await loadTournaments();
   showCreateTorneo(false);
@@ -2420,6 +2430,24 @@ async function createTorneo() {
   document.getElementById('torneo-desc').value = '';
   showToast('✅ Torneo creado');
   await setActiveTournament(data);
+}
+
+function copyInviteLink(code) {
+  const url = window.location.origin + window.location.pathname + '?join=' + code;
+  navigator.clipboard.writeText(url).then(() => showToast('✅ Link copiado al portapapeles'));
+}
+
+async function joinTournamentByCode(code, user) {
+  const { data: torneo } = await sb.from('tournaments').select('*').eq('invite_code', code).maybeSingle();
+  if (!torneo) { showToast('❌ Código de invitación inválido'); return; }
+  await sb.from('tournament_members').upsert(
+    { tournament_id: torneo.id, user_id: user.id },
+    { onConflict: 'tournament_id,user_id' }
+  );
+  history.replaceState(null, '', window.location.pathname);
+  showToast('✅ Te uniste al torneo: ' + torneo.name);
+  await loadTournaments();
+  await setActiveTournament(torneo);
 }
 
 async function deleteTorneo(id) {
@@ -2465,6 +2493,11 @@ function renderTorneos() {
         <span>📅 ${new Date(t.created_at).toLocaleDateString('es-AR',{day:'numeric',month:'short',year:'numeric'})}</span>
         ${isActive && leader ? `<span>🥇 Líder: <strong style="color:var(--secondary)">${esc(leader.alias)}</strong> · ${leader.total}pts</span>` : ''}
       </div>
+      ${t.invite_code ? `
+      <div style="margin-top:0.5rem;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;padding:0.45rem 0.7rem;display:flex;align-items:center;justify-content:space-between;gap:0.5rem">
+        <span style="font-size:0.72rem;color:var(--text-muted)">🔗 Link de invitación</span>
+        <button class="btn btn-ghost btn-sm" onclick="copyInviteLink('${t.invite_code}')">📋 Copiar link</button>
+      </div>` : ''}
       <div class="flex-gap" style="margin-top:0.25rem">
         ${!isActive ? `<button class="btn btn-gold btn-sm" onclick="setActiveTournament(${JSON.stringify(t).replace(/"/g,'&quot;')})">Activar</button>` : `<span style="font-size:0.78rem;color:var(--success)">✓ Estás jugando este torneo</span>`}
         ${canDelete ? `<button class="btn btn-danger btn-sm" onclick="deleteTorneo('${t.id}')">Eliminar</button>` : ''}
