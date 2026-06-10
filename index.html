@@ -1609,7 +1609,11 @@ async function loadTournaments() {
 }
 
 async function loadParticipants() {
-  const { data } = await sb.from('profiles').select('id, nombre, alias, created_at').order('created_at');
+  const { data: members } = await sb.from('tournament_members')
+    .select('user_id').eq('tournament_id', activeTournament.id);
+  const ids = (members || []).map(m => m.user_id);
+  if (ids.length === 0) { _participants = []; return; }
+  const { data } = await sb.from('profiles').select('id, nombre, alias, created_at').in('id', ids).order('created_at');
   _participants = data || [];
 }
 
@@ -2403,7 +2407,7 @@ function updateTournamentChip() {
 async function setActiveTournament(t) {
   activeTournament = t;
   updateTournamentChip();
-  await loadPredictions();
+  await Promise.all([loadPredictions(), loadParticipants()]);
   showToast(`🏆 Torneo activo: ${t.name}`);
   renderTorneos();
 }
