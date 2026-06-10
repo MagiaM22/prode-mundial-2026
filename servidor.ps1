@@ -74,77 +74,77 @@ while ($listener.IsListening) {
 
             # Mapa fixture: match_id -> fecha y nombres de equipo en ingles para matching
             $fx = @{
-                'A1'=@{d='2026-06-11';h='Mexico';a='South Korea'}
-                'A2'=@{d='2026-06-11';h='South Africa';a='Czech Republic'}
-                'A3'=@{d='2026-06-17';h='Mexico';a='South Africa'}
-                'A4'=@{d='2026-06-17';h='South Korea';a='Czech Republic'}
-                'A5'=@{d='2026-06-23';h='South Korea';a='South Africa'}
-                'A6'=@{d='2026-06-23';h='Czech Republic';a='Mexico'}
-                'B1'=@{d='2026-06-11';h='Canada';a='Switzerland'}
-                'B2'=@{d='2026-06-11';h='Bosnia';a='Qatar'}
-                'B3'=@{d='2026-06-17';h='Canada';a='Bosnia'}
-                'B4'=@{d='2026-06-17';h='Switzerland';a='Qatar'}
-                'B5'=@{d='2026-06-23';h='Canada';a='Qatar'}
-                'B6'=@{d='2026-06-23';h='Switzerland';a='Bosnia'}
-                'C1'=@{d='2026-06-12';h='Brazil';a='Morocco'}
-                'C2'=@{d='2026-06-12';h='Haiti';a='Scotland'}
-                'C3'=@{d='2026-06-18';h='Brazil';a='Haiti'}
-                'C4'=@{d='2026-06-18';h='Morocco';a='Scotland'}
-                'C5'=@{d='2026-06-24';h='Brazil';a='Scotland'}
-                'C6'=@{d='2026-06-24';h='Morocco';a='Haiti'}
+                'A1'=@{d='2026-06-11';h='Mexico';a='South Africa'}
+                'A2'=@{d='2026-06-11';h='South Korea';a='Czech Republic'}
+                'A3'=@{d='2026-06-18';h='Czech Republic';a='South Africa'}
+                'A4'=@{d='2026-06-18';h='Mexico';a='South Korea'}
+                'A5'=@{d='2026-06-24';h='South Africa';a='South Korea'}
+                'A6'=@{d='2026-06-24';h='Czech Republic';a='Mexico'}
+                'B1'=@{d='2026-06-12';h='Canada';a='Bosnia'}
+                'B2'=@{d='2026-06-13';h='Qatar';a='Switzerland'}
+                'B3'=@{d='2026-06-18';h='Switzerland';a='Bosnia'}
+                'B4'=@{d='2026-06-18';h='Canada';a='Qatar'}
+                'B5'=@{d='2026-06-24';h='Switzerland';a='Canada'}
+                'B6'=@{d='2026-06-24';h='Bosnia';a='Qatar'}
+                'C1'=@{d='2026-06-13';h='Brazil';a='Morocco'}
+                'C2'=@{d='2026-06-13';h='Haiti';a='Scotland'}
+                'C3'=@{d='2026-06-19';h='Scotland';a='Morocco'}
+                'C4'=@{d='2026-06-19';h='Brazil';a='Haiti'}
+                'C5'=@{d='2026-06-24';h='Morocco';a='Haiti'}
+                'C6'=@{d='2026-06-24';h='Scotland';a='Brazil'}
                 'D1'=@{d='2026-06-12';h='United States';a='Paraguay'}
-                'D2'=@{d='2026-06-12';h='Australia';a='Turkey'}
-                'D3'=@{d='2026-06-18';h='United States';a='Australia'}
-                'D4'=@{d='2026-06-18';h='Paraguay';a='Turkey'}
-                'D5'=@{d='2026-06-24';h='United States';a='Turkey'}
-                'D6'=@{d='2026-06-24';h='Paraguay';a='Australia'}
-                'E1'=@{d='2026-06-13';h='Germany';a='Curacao'}
-                'E2'=@{d='2026-06-13';h='Ivory Coast';a='Ecuador'}
-                'E3'=@{d='2026-06-19';h='Germany';a='Ivory Coast'}
-                'E4'=@{d='2026-06-19';h='Curacao';a='Ecuador'}
-                'E5'=@{d='2026-06-25';h='Germany';a='Ecuador'}
+                'D2'=@{d='2026-06-14';h='Australia';a='Turkey'}
+                'D3'=@{d='2026-06-19';h='United States';a='Australia'}
+                'D4'=@{d='2026-06-20';h='Turkey';a='Paraguay'}
+                'D5'=@{d='2026-06-25';h='Turkey';a='United States'}
+                'D6'=@{d='2026-06-25';h='Paraguay';a='Australia'}
+                'E1'=@{d='2026-06-14';h='Germany';a='Curacao'}
+                'E2'=@{d='2026-06-14';h='Ivory Coast';a='Ecuador'}
+                'E3'=@{d='2026-06-20';h='Germany';a='Ivory Coast'}
+                'E4'=@{d='2026-06-20';h='Ecuador';a='Curacao'}
+                'E5'=@{d='2026-06-25';h='Ecuador';a='Germany'}
                 'E6'=@{d='2026-06-25';h='Curacao';a='Ivory Coast'}
-                'F1'=@{d='2026-06-13';h='Netherlands';a='Japan'}
-                'F2'=@{d='2026-06-13';h='Tunisia';a='Sweden'}
-                'F3'=@{d='2026-06-19';h='Netherlands';a='Tunisia'}
-                'F4'=@{d='2026-06-19';h='Japan';a='Sweden'}
-                'F5'=@{d='2026-06-25';h='Netherlands';a='Sweden'}
-                'F6'=@{d='2026-06-25';h='Japan';a='Tunisia'}
-                'G1'=@{d='2026-06-14';h='Belgium';a='Egypt'}
-                'G2'=@{d='2026-06-14';h='Iran';a='New Zealand'}
-                'G3'=@{d='2026-06-20';h='Belgium';a='Iran'}
-                'G4'=@{d='2026-06-20';h='Egypt';a='New Zealand'}
-                'G5'=@{d='2026-06-26';h='Belgium';a='New Zealand'}
-                'G6'=@{d='2026-06-26';h='Egypt';a='Iran'}
-                'H1'=@{d='2026-06-14';h='Spain';a='Uruguay'}
-                'H2'=@{d='2026-06-14';h='Saudi Arabia';a='Cape Verde'}
-                'H3'=@{d='2026-06-20';h='Spain';a='Saudi Arabia'}
-                'H4'=@{d='2026-06-20';h='Uruguay';a='Cape Verde'}
-                'H5'=@{d='2026-06-26';h='Spain';a='Cape Verde'}
-                'H6'=@{d='2026-06-26';h='Uruguay';a='Saudi Arabia'}
-                'I1'=@{d='2026-06-15';h='France';a='Norway'}
-                'I2'=@{d='2026-06-15';h='Senegal';a='Iraq'}
-                'I3'=@{d='2026-06-21';h='France';a='Senegal'}
-                'I4'=@{d='2026-06-21';h='Norway';a='Iraq'}
-                'I5'=@{d='2026-06-27';h='France';a='Iraq'}
-                'I6'=@{d='2026-06-27';h='Norway';a='Senegal'}
-                'J1'=@{d='2026-06-15';h='Argentina';a='Algeria'}
-                'J2'=@{d='2026-06-15';h='Austria';a='Jordan'}
-                'J3'=@{d='2026-06-21';h='Argentina';a='Austria'}
-                'J4'=@{d='2026-06-21';h='Algeria';a='Jordan'}
-                'J5'=@{d='2026-06-27';h='Argentina';a='Jordan'}
-                'J6'=@{d='2026-06-27';h='Algeria';a='Austria'}
-                'K1'=@{d='2026-06-16';h='Portugal';a='DR Congo'}
-                'K2'=@{d='2026-06-16';h='Uzbekistan';a='Colombia'}
-                'K3'=@{d='2026-06-22';h='Portugal';a='Uzbekistan'}
-                'K4'=@{d='2026-06-22';h='DR Congo';a='Colombia'}
-                'K5'=@{d='2026-06-27';h='Portugal';a='Colombia'}
-                'K6'=@{d='2026-06-27';h='Uzbekistan';a='DR Congo'}
-                'L1'=@{d='2026-06-16';h='England';a='Croatia'}
-                'L2'=@{d='2026-06-16';h='Ghana';a='Panama'}
-                'L3'=@{d='2026-06-22';h='England';a='Ghana'}
-                'L4'=@{d='2026-06-22';h='Croatia';a='Panama'}
-                'L5'=@{d='2026-06-27';h='England';a='Panama'}
+                'F1'=@{d='2026-06-14';h='Netherlands';a='Japan'}
+                'F2'=@{d='2026-06-14';h='Sweden';a='Tunisia'}
+                'F3'=@{d='2026-06-20';h='Netherlands';a='Sweden'}
+                'F4'=@{d='2026-06-21';h='Tunisia';a='Japan'}
+                'F5'=@{d='2026-06-25';h='Tunisia';a='Netherlands'}
+                'F6'=@{d='2026-06-25';h='Japan';a='Sweden'}
+                'G1'=@{d='2026-06-15';h='Belgium';a='Egypt'}
+                'G2'=@{d='2026-06-15';h='Iran';a='New Zealand'}
+                'G3'=@{d='2026-06-21';h='Belgium';a='Iran'}
+                'G4'=@{d='2026-06-21';h='New Zealand';a='Egypt'}
+                'G5'=@{d='2026-06-27';h='New Zealand';a='Belgium'}
+                'G6'=@{d='2026-06-27';h='Egypt';a='Iran'}
+                'H1'=@{d='2026-06-15';h='Spain';a='Cape Verde'}
+                'H2'=@{d='2026-06-15';h='Saudi Arabia';a='Uruguay'}
+                'H3'=@{d='2026-06-21';h='Spain';a='Saudi Arabia'}
+                'H4'=@{d='2026-06-21';h='Uruguay';a='Cape Verde'}
+                'H5'=@{d='2026-06-26';h='Cape Verde';a='Saudi Arabia'}
+                'H6'=@{d='2026-06-26';h='Uruguay';a='Spain'}
+                'I1'=@{d='2026-06-16';h='France';a='Senegal'}
+                'I2'=@{d='2026-06-16';h='Iraq';a='Norway'}
+                'I3'=@{d='2026-06-22';h='France';a='Iraq'}
+                'I4'=@{d='2026-06-22';h='Norway';a='Senegal'}
+                'I5'=@{d='2026-06-26';h='Norway';a='France'}
+                'I6'=@{d='2026-06-26';h='Senegal';a='Iraq'}
+                'J1'=@{d='2026-06-16';h='Argentina';a='Algeria'}
+                'J2'=@{d='2026-06-17';h='Austria';a='Jordan'}
+                'J3'=@{d='2026-06-22';h='Argentina';a='Austria'}
+                'J4'=@{d='2026-06-23';h='Jordan';a='Algeria'}
+                'J5'=@{d='2026-06-27';h='Algeria';a='Austria'}
+                'J6'=@{d='2026-06-27';h='Jordan';a='Argentina'}
+                'K1'=@{d='2026-06-17';h='Portugal';a='DR Congo'}
+                'K2'=@{d='2026-06-17';h='Uzbekistan';a='Colombia'}
+                'K3'=@{d='2026-06-23';h='Portugal';a='Uzbekistan'}
+                'K4'=@{d='2026-06-23';h='Colombia';a='DR Congo'}
+                'K5'=@{d='2026-06-27';h='Colombia';a='Portugal'}
+                'K6'=@{d='2026-06-27';h='DR Congo';a='Uzbekistan'}
+                'L1'=@{d='2026-06-17';h='England';a='Croatia'}
+                'L2'=@{d='2026-06-17';h='Ghana';a='Panama'}
+                'L3'=@{d='2026-06-23';h='England';a='Ghana'}
+                'L4'=@{d='2026-06-23';h='Panama';a='Croatia'}
+                'L5'=@{d='2026-06-27';h='Panama';a='England'}
                 'L6'=@{d='2026-06-27';h='Croatia';a='Ghana'}
             }
 
