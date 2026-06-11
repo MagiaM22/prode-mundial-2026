@@ -1581,7 +1581,7 @@ async function doForgotPassword() {
   if (!email) { setAuthMsg('Escribí tu email arriba y volvé a tocar el link.', ''); return; }
   setAuthMsg('', '');
   const redirectTo = window.location.hostname === 'localhost'
-    ? 'https://prode-mundial-2026-rouge.vercel.app/'
+    ? 'https://magiam22.github.io/prode-mundial-2026/'
     : window.location.origin + window.location.pathname;
   const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
   if (error) { setAuthMsg(error.message, ''); return; }

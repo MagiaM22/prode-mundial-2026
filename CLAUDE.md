@@ -44,11 +44,17 @@ Flujo de recuperación: link "¿Olvidaste tu contraseña?" → `sb.auth.resetPas
 
 ### ⚠️ PENDIENTE DE CONFIG (para que el reset de contraseña funcione)
 En el panel de **Supabase → Authentication → URL Configuration**:
-1. Agregar **`http://localhost:8080`** a la lista de **Redirect URLs**.
+1. Agregar **`http://localhost:8080`** y **`https://magiam22.github.io/prode-mundial-2026/`** a la lista de **Redirect URLs** (y poner la de github.io como **Site URL**).
 2. Tener el **envío de emails activo** (el built-in de Supabase alcanza para poco volumen; o configurar SMTP).
 
 > El link del mail apunta a `localhost`, así que hay que abrir el mail **en la misma compu** donde corre el server.
 > Mientras esto no esté configurado, para resetear una clave: Supabase → Authentication → Users → buscar el email → "Send password recovery" / setear clave nueva.
+
+## Publicación
+
+- **Hosting: GitHub Pages** (Settings → Pages → Deploy from a branch → `main` / root) → `https://magiam22.github.io/prode-mundial-2026/`. Se redeploya solo con cada push a `main`.
+- No hace falta server en la nube: el sync de resultados/stats es solo-admin y corre desde localhost con `servidor.ps1`; los datos quedan en Supabase y la página publicada los lee de ahí.
+- ⚠️ **Antes de pushear: `git pull` siempre.** El 11/06/2026 un push con una copia local vieja de `index.html` pisó la base GDT completa, el reset de contraseña, la tabla general y los links de invitación (restaurado en `76f113d`). Canario rápido: `rating:` debe aparecer **1248 veces** en `index.html`; si un commit chico toca miles de líneas, es una versión vieja pisando la actual.
 
 ## Convenciones
 
