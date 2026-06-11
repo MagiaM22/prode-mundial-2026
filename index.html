@@ -3946,13 +3946,13 @@ function gdtValidate() {
 // ============================================================
 function getTransferWindow() {
   const now = new Date();
-  const j1Lock = new Date('2026-06-11T16:30:00Z');
-  const j2Lock = new Date('2026-06-17T16:30:00Z');
-  const j3Lock = new Date('2026-06-23T18:30:00Z');
+  const j1Lock = new Date('2026-06-11T18:30:00Z');
+  const j2Lock = new Date('2026-06-18T16:30:00Z');
+  const j3Lock = new Date('2026-06-24T22:00:00Z');
   if (now < j1Lock) return 'pre';
-  if (now < j2Lock) return 'j2';
-  if (now < j3Lock) return 'j3';
-  return 'locked';
+  if (now < j2Lock) return 'j1';
+  if (now < j3Lock) return 'j2';
+  return 'j3';
 }
 
 function renderTransferStatus() {
