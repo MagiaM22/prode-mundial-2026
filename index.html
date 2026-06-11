@@ -1525,8 +1525,24 @@ async function onUserReady(user) {
   const joinCode = new URLSearchParams(window.location.search).get('join');
   if (joinCode) await joinTournamentByCode(joinCode, user);
 
-  // Load all data then render home
+  // Restaurar torneo guardado ANTES de cargar datos, así todo se carga en el torneo correcto
+  const savedId = localStorage.getItem('prode_tournament_' + user.id);
+  if (savedId) activeTournament = { ...activeTournament, id: savedId };
+
   await loadAllData();
+
+  // Verificar que el torneo guardado sigue siendo válido (el usuario sigue siendo miembro)
+  if (savedId && _tournaments) {
+    const saved = _tournaments.find(t => t.id === savedId);
+    if (saved) {
+      activeTournament = saved;
+    } else {
+      // Ya no es miembro de ese torneo, limpiar y usar el primero disponible
+      localStorage.removeItem('prode_tournament_' + user.id);
+      activeTournament = _tournaments[0] || activeTournament;
+    }
+  }
+
   updateTournamentChip();
   renderHome();
 }
@@ -2477,6 +2493,7 @@ function updateTournamentChip() {
 
 async function setActiveTournament(t) {
   activeTournament = t;
+  if (currentUser) localStorage.setItem('prode_tournament_' + currentUser.id, t.id);
   updateTournamentChip();
   await Promise.all([loadPredictions(), loadParticipants()]);
   showToast(`🏆 Torneo activo: ${t.name}`);
