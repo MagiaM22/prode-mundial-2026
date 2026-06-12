@@ -4452,7 +4452,10 @@ function renderGDTRules() {
   const pos = ['GK','DEF','MED','DEL'];
   const head = '<tr><th style="text-align:left;padding:4px 6px;color:var(--text-muted)">Acción</th>' +
     pos.map(p => `<th style="padding:4px 6px;color:var(--secondary)">${p}</th>`).join('') + '</tr>';
-  const body = rows.map(([label,key]) => {
+  const notaRow = `<tr style="border-top:1px solid var(--border)">
+    <td style="text-align:left;padding:4px 6px">📝 Nota del partido</td>
+    <td colspan="4" style="text-align:center;padding:4px 6px;color:#7fd17f;font-weight:700">+ nota (1 a 10)</td></tr>`;
+  const body = notaRow + rows.map(([label,key]) => {
     const cells = pos.map(pp => {
       const v = GDT_PTS[pp][key];
       const col = v > 0 ? '#7fd17f' : (v < 0 ? '#e06666' : '#777');
@@ -4462,6 +4465,7 @@ function renderGDTRules() {
     return `<tr style="border-top:1px solid var(--border)"><td style="text-align:left;padding:4px 6px">${label}</td>${cells}</tr>`;
   }).join('');
   const notes = `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:0.9rem;line-height:1.6">
+    • La <b style="color:var(--secondary)">nota del partido</b> es la base del puntaje; lo demás se suma encima. Si el jugador jugó pero no hay nota disponible, computa <b>6</b>.<br>
     • El <b style="color:var(--secondary)">capitán ⭐</b> suma <b>el doble</b> de puntos.<br>
     • Si un titular no juega, entra automáticamente un <b>suplente</b> del mismo puesto.<br>
     • La <b>valla invicta</b> (puntos para GK y DEF) cuenta solo si tu equipo no recibió goles.</div>`;
@@ -4569,8 +4573,12 @@ function calcGDTMatchPoints(playerId, matchId, captainId) {
       if (side === 'away' && res.local === 0) total += pts.cleanSheet;
     }
   }
+  // Nota del partido como base del puntaje (estilo Gran DT clásico).
+  // Si jugó pero no hay nota disponible, computa 6 de oficio.
+  const jugo = stat.minutes_played > 0 || stat.goals > 0 || stat.assists > 0 || stat.is_mvp;
+  if (jugo) total += (stat.rating != null ? Number(stat.rating) : 6);
   if (playerId === captainId) total *= 2;
-  return total;
+  return Math.round(total * 10) / 10;
 }
 
 function gdtPlayerPlayed(playerId, matchId) {
@@ -4618,6 +4626,8 @@ function calcGDTUserScore(userId) {
       }
     }
   }
+  total = Math.round(total * 10) / 10;
+  playerPts.forEach(p => { p.pts = Math.round(p.pts * 10) / 10; });
   return { total, playerPts };
 }
 
@@ -4784,7 +4794,7 @@ function renderTeamOfWeek(j) {
   }
   const byPos = { GK:[], DEF:[], MED:[], DEL:[] };
   for (const c of team) byPos[c.player.pos].push({ ...c.player, pts: c.pts, nota: c.nota, mvp: c.mvp });
-  const total = team.reduce((s,c) => s + c.pts, 0);
+  const total = Math.round(team.reduce((s,c) => s + c.pts, 0) * 10) / 10;
   // Nombre corto para la tarjeta: si es largo, apellido solo
   const corto = n => n.length <= 14 ? n : (n.split(' ').slice(1).join(' ') || n);
 

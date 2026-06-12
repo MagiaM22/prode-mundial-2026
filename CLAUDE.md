@@ -34,7 +34,7 @@ Levanta un server local en **http://localhost:8080** y abre el navegador.
   - **`est:1`** (opcional) = precio estimado a ojo (jugador que no figura en EA FC 26: juveniles, selecciones chicas).
 - Config del juego (~línea 2386): `GDT_BUDGET = 1200`, 11 titulares + 4 suplentes, límites por puesto (`GDT_LIMITS`), scoring `GDT_PTS`.
 - **Para re-tunear precios:** reaplicar la fórmula **sobre `rating`** (nunca acumular sobre `precio`). Es una pasada idempotente: leer `rating`, recalcular `precio`.
-- Scoring `GDT_PTS` (validado vs FPL y WC Fantasy oficial): gol GK10/DEF8/MED6/DEL5, valla invicta GK4/DEF3, asist 3, amarilla -1, roja -3, gol en contra -2, MVP +2, minutos +1 (60'+). Capitán ×2. Motor de cálculo: `calcGDTMatchPoints`.
+- Scoring (motor `calcGDTMatchPoints`): **base = nota del partido (1-10, FotMob; 6 de oficio si jugó sin nota)** + eventos `GDT_PTS`: gol GK10/DEF8/MED6/DEL5, valla invicta GK4/DEF3, asist 3, amarilla -1, roja -3, gol en contra -2, MVP +2, minutos +1 (60'+). Capitán ×2 (multiplica todo, nota incluida). Total redondeado a 1 decimal.
 - **Equipo de la Fecha** (pestaña ⭐, visible a todos): mejor 11 por jornada según puntos GDT, respetando `GDT_LIMITS`; se recalcula de `_gdtMatchStats` (mínimos por puesto primero, después los mejores hasta 11). Funciones `calcTeamOfWeek`/`renderTeamOfWeek`.
 
 ### Cómo actualizar la base más adelante
