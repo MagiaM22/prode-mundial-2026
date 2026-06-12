@@ -1163,12 +1163,11 @@
         <div class="flex-between" style="margin-bottom:0.75rem">
           <h2 style="margin:0">📊 Estadísticas Gran DT</h2>
           <div class="flex-gap">
-            <span class="sofascore-badge">📡 football-data.org</span>
-            <span style="font-size:0.75rem;color:var(--warning)">⚠️ Requiere servidor local</span>
+            <span class="sofascore-badge">📡 ESPN</span>
           </div>
         </div>
         <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.75rem">
-          Sincroniza goles, asistencias, tarjetas, cambios y minutos desde football-data.org para partidos finalizados. Usa la misma API key que Resultados.
+          Sincroniza goles, asistencias, tarjetas, cambios y minutos desde ESPN para partidos finalizados. No necesita API key y funciona desde cualquier lado.
         </p>
         <div id="gdt-admin-matches"></div>
       </div>
@@ -1442,7 +1441,7 @@ const TEAM_API_MAP = {
   'Japan':'Japón','Tunisia':'Túnez','Sweden':'Suecia',
   'Belgium':'Bélgica','Egypt':'Egipto','Iran':'Irán',
   'New Zealand':'Nueva Zelanda','Spain':'España','Uruguay':'Uruguay',
-  'Saudi Arabia':'Arabia Saudita','Cape Verde':'Cabo Verde',
+  'Saudi Arabia':'Arabia Saudita','Cape Verde':'Cabo Verde','Cape Verde Islands':'Cabo Verde',
   'France':'Francia','Norway':'Noruega','Senegal':'Senegal','Iraq':'Irak',
   'Argentina':'Argentina','Algeria':'Argelia','Austria':'Austria',
   'Jordan':'Jordania','Portugal':'Portugal',
@@ -4636,7 +4635,6 @@ function renderGDTAdminStats() {
   const results   = _results || {};
   const container = document.getElementById('gdt-admin-matches');
   if (!container) return;
-  const isLocal   = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
 
   const matchesWithResults = [];
   for (const [gk, group] of Object.entries(FIXTURE)) {
@@ -4676,9 +4674,7 @@ function renderGDTAdminStats() {
         </div>
         <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
           ${synced ? `<span style="color:var(--success);font-size:0.78rem">✅ ${stats.length} jugadores</span>` : ''}
-          ${isLocal
-            ? `<button class="sofascore-btn" onclick="syncGDTStats('${m.id}')">📡 Sync stats</button>`
-            : `<span style="font-size:0.72rem;color:var(--text-muted)">Sync: requiere localhost</span>`}
+          <button class="sofascore-btn" onclick="syncGDTStats('${m.id}')">📡 Sync stats</button>
         </div>
       </div>
       ${synced ? `<table class="gdt-stat-table">
@@ -4769,91 +4765,89 @@ function renderTeamOfWeek(j) {
 }
 
 // ============================================================
-// GRAN DT — SYNC STATS (football-data.org)
+// GRAN DT — SYNC STATS (ESPN, sin key y sin servidor local)
 // ============================================================
-// Cache: match_id del fixture → id de partido en football-data
-let _fdMatchIndex = null;
+const ESPN_API = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world';
 
-async function loadFDMatchIndex(apiKey) {
-  if (_fdMatchIndex) return _fdMatchIndex;
-  const res = await fetch(`${location.origin}/api/sync?key=${encodeURIComponent(apiKey)}`);
-  if (!res.ok) {
-    const err = await res.json().catch(()=>({}));
-    throw new Error(err.error || `HTTP ${res.status}`);
+// Busca el evento de ESPN para un partido del fixture (fecha ±1 día + nombres de equipos)
+async function espnFindEvent(matchId) {
+  let partido = null, grupo = null;
+  for (const group of Object.values(FIXTURE)) {
+    const p = group.partidos.find(x => x.id === matchId);
+    if (p) { partido = p; grupo = group; break; }
   }
+  if (!partido) throw new Error(`Partido ${matchId} no está en el fixture`);
+  const localES = grupo.equipos[partido.local], visitES = grupo.equipos[partido.visit];
+
+  const d   = new Date(`${partido.fecha}T12:00:00-03:00`);
+  const ymd = dt => dt.toISOString().slice(0,10).replace(/-/g,'');
+  const res = await fetch(`${ESPN_API}/scoreboard?dates=${ymd(new Date(d.getTime()-86400000))}-${ymd(new Date(d.getTime()+86400000))}`);
+  if (!res.ok) throw new Error(`ESPN scoreboard HTTP ${res.status}`);
   const data = await res.json();
-  _fdMatchIndex = {};
-  for (const m of (data.matches || [])) {
-    const homeES = TEAM_API_MAP[m.homeTeam?.name] || TEAM_API_MAP[m.homeTeam?.shortName];
-    const awayES = TEAM_API_MAP[m.awayTeam?.name] || TEAM_API_MAP[m.awayTeam?.shortName];
-    if (!homeES || !awayES) continue;
-    for (const group of Object.values(FIXTURE)) {
-      for (const p of group.partidos) {
-        if (group.equipos[p.local] === homeES && group.equipos[p.visit] === awayES) _fdMatchIndex[p.id] = m.id;
-      }
-    }
+
+  for (const ev of (data.events || [])) {
+    const comp  = ev.competitions?.[0];
+    const names = (comp?.competitors || []).map(c => TEAM_API_MAP[c.team?.displayName] || TEAM_API_MAP[c.team?.name] || c.team?.displayName);
+    if (names.includes(localES) && names.includes(visitES)) return ev;
   }
-  return _fdMatchIndex;
+  throw new Error(`${localES} vs ${visitES} no aparece en ESPN (¿ya se jugó?)`);
 }
 
-// Convierte el detalle de football-data (goals/bookings/substitutions/lineups) a filas de gdt_match_stats.
-// football-data no informa MVP: is_mvp queda en false.
-function buildStatsFromFDMatch(match) {
+// Convierte el summary de ESPN (rosters + keyEvents) a filas de gdt_match_stats.
+// ESPN no informa MVP: is_mvp queda en false (se puede cargar a mano en Supabase).
+function buildStatsFromESPN(summary) {
   const FT = 90;
-  const teamES = t => TEAM_API_MAP[t?.name] || TEAM_API_MAP[t?.shortName] || t?.name || '';
-  const homeES = teamES(match.homeTeam), awayES = teamES(match.awayTeam);
   const ps = {};
-  const ensure = (player, team) => {
-    const name = player?.name;
+  const teamES = t => TEAM_API_MAP[t?.displayName] || t?.displayName || '';
+  const ensure = (name, team) => {
     if (!name) return null;
     if (!ps[name]) ps[name] = { player_name:name, team, goals:0, assists:0, yellow_cards:0, red_cards:0, own_goals:0, minutes_played:0, is_mvp:false };
     return ps[name];
   };
+
   // Titulares arrancan con 90'; suplentes con 0 hasta que entren
-  for (const [team, es] of [[match.homeTeam, homeES], [match.awayTeam, awayES]]) {
-    for (const p of (team?.lineup || [])) { const r = ensure(p, es); if (r) r.minutes_played = FT; }
-    for (const p of (team?.bench  || [])) ensure(p, es);
+  for (const r of (summary.rosters || [])) {
+    const es = teamES(r.team);
+    for (const j of (r.roster || [])) {
+      const row = ensure(j.athlete?.displayName, es);
+      if (row && j.starter) row.minutes_played = FT;
+    }
   }
-  for (const s of (match.substitutions || [])) {
-    const es  = teamES(s.team);
-    const min = (s.minute ?? FT);
-    const out = ensure(s.playerOut, es);
-    const inn = ensure(s.playerIn, es);
-    if (out) out.minutes_played = min;
-    if (inn) inn.minutes_played = Math.max(FT - min, 0);
-  }
-  for (const g of (match.goals || [])) {
-    const forES = teamES(g.team);
-    const own   = g.type === 'OWN';
-    const sc    = ensure(g.scorer, own ? (forES === homeES ? awayES : homeES) : forES);
-    if (sc) { if (own) sc.own_goals++; else sc.goals++; }
-    if (!own && g.assist) { const as = ensure(g.assist, forES); if (as) as.assists++; }
-  }
-  for (const b of (match.bookings || [])) {
-    const r = ensure(b.player, teamES(b.team));
-    if (!r) continue;
-    if (String(b.card || '').includes('RED')) r.red_cards++;
-    else r.yellow_cards++;
+
+  const equipos = (summary.rosters || []).map(r => teamES(r.team));
+  for (const ev of (summary.keyEvents || [])) {
+    const tipo = ev.type?.text || '';
+    const es   = teamES(ev.team);
+    const min  = Math.round((ev.clock?.value || 0) / 60);
+    const who  = i => ev.participants?.[i]?.athlete?.displayName;
+    if (ev.type?.type === 'substitution') {
+      // participants = [entra, sale]
+      const inn = ensure(who(0), es), out = ensure(who(1), es);
+      if (out) out.minutes_played = min;
+      if (inn) inn.minutes_played = Math.max(FT - min, 0);
+    } else if (ev.scoringPlay) {
+      const own = /own goal/i.test(tipo);
+      const sc  = ensure(who(0), own ? (equipos.find(e => e !== es) || es) : es);
+      if (sc) { if (own) sc.own_goals++; else sc.goals++; }
+      if (!own) { const as = ensure(who(1), es); if (as) as.assists++; }
+    } else if (/yellow card/i.test(tipo)) {
+      const r = ensure(who(0), es); if (r) r.yellow_cards++;
+    } else if (/red card/i.test(tipo)) {
+      const r = ensure(who(0), es); if (r) r.red_cards++;
+    }
   }
   return Object.values(ps);
 }
 
 async function syncGDTStats(matchId) {
-  const apiKey = localStorage.getItem('prode_apikey') || document.getElementById('api-key-input')?.value.trim() || '';
-  if (!apiKey) { showToast('❌ Ingresá tu API key de football-data.org en Resultados (ADMIN)'); return; }
-  showToast('⏳ Sincronizando stats con football-data...');
+  showToast('⏳ Sincronizando stats desde ESPN...');
   try {
-    const index = await loadFDMatchIndex(apiKey);
-    const fdId  = index[matchId];
-    if (!fdId) throw new Error(`Partido ${matchId} no encontrado en football-data (¿ya se jugó?)`);
-    const res = await fetch(`${location.origin}/api/fdmatch?id=${fdId}&key=${encodeURIComponent(apiKey)}`);
-    if (!res.ok) {
-      const err = await res.json().catch(()=>({}));
-      throw new Error(err.error || `HTTP ${res.status}`);
-    }
-    const data  = await res.json();
-    const stats = buildStatsFromFDMatch(data.match || data);
-    if (!stats.length) { showToast('ℹ️ football-data todavía no tiene los datos de este partido'); return; }
+    const ev  = await espnFindEvent(matchId);
+    const res = await fetch(`${ESPN_API}/summary?event=${ev.id}`);
+    if (!res.ok) throw new Error(`ESPN summary HTTP ${res.status}`);
+    const summary = await res.json();
+    const stats   = buildStatsFromESPN(summary);
+    if (!stats.length) { showToast('ℹ️ ESPN todavía no tiene los datos de este partido'); return; }
 
     const toUpsert = stats.map(s => ({
       match_id:       matchId,
@@ -4885,7 +4879,7 @@ async function syncGDTStats(matchId) {
     renderGDTAdminStats();
   } catch(err) {
     const msg = (err.message.includes('fetch')||err.message.includes('Network'))
-      ? 'No se pudo conectar. ¿Está corriendo servidor.ps1?'
+      ? 'No se pudo conectar a ESPN. Probá de nuevo en un rato.'
       : err.message;
     showToast('❌ ' + msg);
   }

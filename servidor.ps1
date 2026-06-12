@@ -38,7 +38,7 @@ function Send-Json($resp, $code, $json) {
     $resp.Close()
 }
 
-function Proxy-FootballData($resp, $apiUrl, $apiKey, $logLabel) {
+function Invoke-FootballDataProxy($resp, $apiUrl, $apiKey, $logLabel) {
     try {
         $wc = New-Object System.Net.WebClient
         $wc.Headers.Add('X-Auth-Token', $apiKey)
@@ -64,20 +64,7 @@ while ($listener.IsListening) {
         # -- Proxy: lista de partidos del Mundial (resultados) --
         if ($path -eq 'api/sync') {
             $apiKey = $req.QueryString['key']
-            Proxy-FootballData $resp 'https://api.football-data.org/v4/competitions/WC/matches?stage=GROUP_STAGE' $apiKey 'Sync'
-            continue
-        }
-
-        # -- Proxy: detalle de un partido (goles, tarjetas, cambios, alineaciones) --
-        # Para las stats del Gran DT. id = match id de football-data.
-        if ($path -eq 'api/fdmatch') {
-            $apiKey  = $req.QueryString['key']
-            $matchId = $req.QueryString['id']
-            if ($matchId -notmatch '^\d+$') {
-                Send-Json $resp 400 '{"error":"id de partido invalido"}'
-                continue
-            }
-            Proxy-FootballData $resp "https://api.football-data.org/v4/matches/$matchId" $apiKey "Detalle $matchId"
+            Invoke-FootballDataProxy $resp 'https://api.football-data.org/v4/competitions/WC/matches?stage=GROUP_STAGE' $apiKey 'Sync'
             continue
         }
 

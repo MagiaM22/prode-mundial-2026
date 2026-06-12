@@ -12,10 +12,11 @@ Levanta un server local en **http://localhost:8080** y abre el navegador.
 
 - **`index.html`** — toda la app: maqueta, estilos y lógica JS inline.
 - **`servidor.ps1`** — server estático en PowerShell + **proxy** a football-data.org (resuelve CORS):
-  - `/api/sync` → lista de partidos del Mundial (resultados; necesita API key)
-  - `/api/fdmatch?id=<fd_id>` → detalle de un partido (goles, tarjetas, cambios, alineaciones) para las stats del Gran DT; misma key.
-  - ⚠️ Sofascore se descartó (06/2026): bloquea requests no-browser con 403 "challenge". No volver a intentarlo.
-  - football-data no informa MVP → `is_mvp` queda `false` (la regla del +2 solo aplica si se carga a mano en Supabase).
+  - `/api/sync` → lista de partidos del Mundial para **resultados** (necesita API key de football-data; solo funciona desde localhost).
+- **Stats del Gran DT: ESPN** (`site.api.espn.com/.../soccer/fifa.world`), directo desde el browser — tiene CORS abierto, **sin key y sin servidor local**. `espnFindEvent` (scoreboard por fecha ±1 día + `TEAM_API_MAP`) → `summary?event=` → `buildStatsFromESPN` (rosters = titulares 90'; keyEvents = goles/asistencias/tarjetas/cambios; en sustituciones participants=[entra, sale]).
+  - ⚠️ APIs descartadas para stats, no volver a intentarlas: **Sofascore** (403 challenge anti-bot, 06/2026) y **football-data** (el detalle de partido viene vacío en el tier gratis).
+  - ESPN no informa MVP → `is_mvp` queda `false` (la regla del +2 solo aplica si se carga a mano en Supabase).
+  - Ojo nombres coreanos/romanización: algunos suplentes de Corea no matchean por slug con la base (ej. Lee Gi-Hyuk). Si un jugador así puntúa, revisar el nombre en `GDT_PLAYERS`.
 - **`iniciar.bat`** — lanza el server y abre el navegador.
 - **Backend de datos y auth: Supabase** (cliente JS por CDN, `SUPABASE_URL`/`SUPABASE_KEY` en index.html). Tablas: `profiles`, `tournaments`, predicciones, resultados, equipos GDT.
 
