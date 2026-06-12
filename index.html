@@ -811,6 +811,49 @@
     .gdt-field-player .num { font-size: 0.75rem; font-weight: 800; }
     .gdt-field-player .name { font-size: 0.6rem; color: var(--text); margin-top: 2px; }
     .gdt-field-captain .num::before { content: '★ '; color: #ffc107; }
+
+    /* ── Equipo de la Fecha ── */
+    .totw-player {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      z-index: 10;
+    }
+    .totw-pts {
+      width: 38px; height: 38px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(145deg, #f5d77a, #c9aa71);
+      color: #15120a;
+      font-weight: 800; font-size: 0.95rem;
+      border: 2px solid rgba(255,255,255,0.9);
+      box-shadow: 0 3px 8px rgba(0,0,0,0.5);
+      position: relative;
+    }
+    .totw-mvp::after {
+      content: '★';
+      position: absolute; top: -11px; right: -7px;
+      color: #ffc107; font-size: 0.85rem;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+    }
+    .totw-name {
+      font-size: 0.66rem; font-weight: 700; line-height: 1.15;
+      color: #fff;
+      background: rgba(0,0,0,0.62);
+      padding: 2px 7px; border-radius: 7px;
+      white-space: nowrap; max-width: 96px;
+      overflow: hidden; text-overflow: ellipsis;
+      text-align: center;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+    }
+    .totw-nota { font-size: 0.6rem; font-weight: 700; color: #ffe9b0; opacity: 0.95; }
+    @media (max-width: 560px) {
+      .totw-pts { width: 30px; height: 30px; font-size: 0.8rem; }
+      .totw-name { font-size: 0.56rem; max-width: 70px; }
+    }
   </style>
 </head>
 <body>
@@ -4709,7 +4752,7 @@ function calcTeamOfWeek(j) {
         if (!p) continue;
         const pts  = calcGDTMatchPoints(p.id, partido.id, null);
         const prev = byId.get(p.id);
-        if (prev) prev.pts += pts; else byId.set(p.id, { player: p, pts, nota: s.rating ?? null });
+        if (prev) prev.pts += pts; else byId.set(p.id, { player: p, pts, nota: s.rating ?? null, mvp: !!s.is_mvp });
       }
     }
   }
@@ -4719,18 +4762,10 @@ function calcTeamOfWeek(j) {
   for (const c of byId.values()) byPos[c.player.pos]?.push(c);
   for (const pos of Object.keys(byPos)) byPos[pos].sort((a,b) => b.pts - a.pts);
 
-  // Mínimos por puesto primero, después los mejores restantes hasta 11
-  const team = [], count = { GK:0, DEF:0, MED:0, DEL:0 };
-  for (const pos of ['GK','DEF','MED','DEL']) {
-    const t = byPos[pos].splice(0, GDT_LIMITS[pos].min);
-    team.push(...t); count[pos] = t.length;
-  }
-  const resto = [...byPos.DEF, ...byPos.MED, ...byPos.DEL].sort((a,b) => b.pts - a.pts);
-  for (const c of resto) {
-    if (team.length >= GDT_SQUAD_SIZE) break;
-    if (count[c.player.pos] >= GDT_LIMITS[c.player.pos].max) continue;
-    team.push(c); count[c.player.pos]++;
-  }
+  // Formación fija 4-3-3: el mejor arquero, 4 defensores, 3 mediocampistas y 3 delanteros
+  const TOTW_433 = { GK:1, DEF:4, MED:3, DEL:3 };
+  const team = [];
+  for (const pos of ['GK','DEF','MED','DEL']) team.push(...byPos[pos].slice(0, TOTW_433[pos]));
   return { matches: matchesConStats, team };
 }
 
@@ -4748,15 +4783,21 @@ function renderTeamOfWeek(j) {
     return;
   }
   const byPos = { GK:[], DEF:[], MED:[], DEL:[] };
-  for (const c of team) byPos[c.player.pos].push({ ...c.player, pts: c.pts, nota: c.nota });
+  for (const c of team) byPos[c.player.pos].push({ ...c.player, pts: c.pts, nota: c.nota, mvp: c.mvp });
   const total = team.reduce((s,c) => s + c.pts, 0);
+  // Nombre corto para la tarjeta: si es largo, apellido solo
+  const corto = n => n.length <= 14 ? n : (n.split(' ').slice(1).join(' ') || n);
 
   el.innerHTML = `
     <div class="gdt-field">
       ${GDT_FIELD_SVG}
-      ${gdtFieldLayout(byPos).map(p => `<div class="gdt-field-player" style="left:${p.left}%;top:${p.top}%;z-index:10" title="${p.nombre} — ${p.pts} pts"><span class="num">${p.pts}</span><span class="name">${p.nombre.split(' ').pop().substring(0,6)}</span></div>`).join('')}
+      ${gdtFieldLayout(byPos).map(p => `
+        <div class="totw-player" style="left:${p.left}%;top:${p.top}%" title="${esc(p.nombre)} (${esc(p.seleccion)}) — ${p.pts} pts${p.nota != null ? ' — nota ' + p.nota : ''}">
+          <div class="totw-pts ${p.mvp ? 'totw-mvp' : ''}">${p.pts}</div>
+          <div class="totw-name">${p.flag} ${esc(corto(p.nombre))}${p.nota != null ? ` <span class="totw-nota">${p.nota}</span>` : ''}</div>
+        </div>`).join('')}
     </div>
-    <div style="margin:0.75rem 0 0.5rem;font-size:0.85rem;color:var(--text-muted)">${matches} partido(s) computados · <strong style="color:var(--secondary)">${total} pts</strong> en total</div>
+    <div style="margin:0.75rem 0 0.5rem;font-size:0.85rem;color:var(--text-muted)">Formación 4-3-3 · ${matches} partido(s) computados · <strong style="color:var(--secondary)">${total} pts</strong> en total · círculo = puntos GDT · número chico = nota</div>
     <table class="gdt-stat-table">
       <thead><tr><th style="text-align:left">Jugador</th><th style="text-align:left">Selección</th><th>Pos</th><th>Nota</th><th>Pts</th></tr></thead>
       <tbody>${['GK','DEF','MED','DEL'].flatMap(pos => byPos[pos]).map(p => `
