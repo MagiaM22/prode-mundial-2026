@@ -4009,6 +4009,7 @@ function gdtCountByPos(pos) {
 function gdtValidate() {
   const msgs = [];
   if (_gdtLineup.length !== GDT_SQUAD_SIZE) msgs.push(`Necesitás 11 titulares (tenés ${_gdtLineup.length})`);
+  if (_gdtBench.length !== GDT_BENCH_SIZE) msgs.push(`Necesitás ${GDT_BENCH_SIZE} suplentes (tenés ${_gdtBench.length})`);
   if (gdtBudgetUsed() > GDT_BUDGET) msgs.push(`Presupuesto excedido (${gdtBudgetUsed()}/${GDT_BUDGET})`);
   for (const [pos, lim] of Object.entries(GDT_LIMITS)) {
     const cnt = gdtCountByPos(pos);
@@ -4276,7 +4277,7 @@ function renderGDTBudget() {
   const val  = document.getElementById('gdt-validation-msg');
   const cap  = document.getElementById('gdt-captain-label');
   if (fill) { fill.style.width = pct+'%'; fill.classList.toggle('over', used > GDT_BUDGET); }
-  if (lbl) lbl.textContent = `Presupuesto: ${used} / ${GDT_BUDGET} fichas · ${_gdtLineup.length}/11 titulares · ${_gdtBench.length}/3 suplentes`;
+  if (lbl) lbl.textContent = `Presupuesto: ${used} / ${GDT_BUDGET} fichas · ${_gdtLineup.length}/${GDT_SQUAD_SIZE} titulares · ${_gdtBench.length}/${GDT_BENCH_SIZE} suplentes`;
   if (cap) {
     const capP = _gdtCaptainId ? gdtPlayerById(_gdtCaptainId) : null;
     cap.textContent = capP ? `★ Capitán: ${capP.nombre}` : '';
