@@ -1525,8 +1525,24 @@ async function onUserReady(user) {
   const joinCode = new URLSearchParams(window.location.search).get('join');
   if (joinCode) await joinTournamentByCode(joinCode, user);
 
-  // Load all data then render home
+  // Restaurar torneo guardado ANTES de cargar datos, así todo se carga en el torneo correcto
+  const savedId = localStorage.getItem('prode_tournament_' + user.id);
+  if (savedId) activeTournament = { ...activeTournament, id: savedId };
+
   await loadAllData();
+
+  // Verificar que el torneo guardado sigue siendo válido (el usuario sigue siendo miembro)
+  if (savedId && _tournaments) {
+    const saved = _tournaments.find(t => t.id === savedId);
+    if (saved) {
+      activeTournament = saved;
+    } else {
+      // Ya no es miembro de ese torneo, limpiar y usar el primero disponible
+      localStorage.removeItem('prode_tournament_' + user.id);
+      activeTournament = _tournaments[0] || activeTournament;
+    }
+  }
+
   updateTournamentChip();
   renderHome();
 }
@@ -2477,6 +2493,7 @@ function updateTournamentChip() {
 
 async function setActiveTournament(t) {
   activeTournament = t;
+  if (currentUser) localStorage.setItem('prode_tournament_' + currentUser.id, t.id);
   updateTournamentChip();
   await Promise.all([loadPredictions(), loadParticipants()]);
   showToast(`🏆 Torneo activo: ${t.name}`);
@@ -3944,14 +3961,24 @@ function gdtValidate() {
 // ============================================================
 // GRAN DT — VENTANAS DE CAMBIO
 // ============================================================
+// Cierre de cada jornada = 30 min antes de su primer partido (derivado del FIXTURE)
+function jornadaLock(j) {
+  let min = Infinity;
+  for (const group of Object.values(FIXTURE)) {
+    for (const p of group.partidos) {
+      if (p.jornada !== j) continue;
+      const t = new Date(`${p.fecha}T${p.hora || '20:00'}:00-03:00`).getTime();
+      if (t < min) min = t;
+    }
+  }
+  return min - 30 * 60 * 1000;
+}
+
 function getTransferWindow() {
-  const now = new Date();
-  const j1Lock = new Date('2026-06-11T16:30:00Z');
-  const j2Lock = new Date('2026-06-17T16:30:00Z');
-  const j3Lock = new Date('2026-06-23T18:30:00Z');
-  if (now < j1Lock) return 'pre';
-  if (now < j2Lock) return 'j2';
-  if (now < j3Lock) return 'j3';
+  const now = Date.now();
+  if (now < jornadaLock(1)) return 'pre';
+  if (now < jornadaLock(2)) return 'j2';
+  if (now < jornadaLock(3)) return 'j3';
   return 'locked';
 }
 
