@@ -56,6 +56,11 @@ En el panel de **Supabase → Authentication → URL Configuration**:
 - No hace falta server en la nube: el sync de resultados/stats es solo-admin y corre desde localhost con `servidor.ps1`; los datos quedan en Supabase y la página publicada los lee de ahí.
 - ⚠️ **Antes de pushear: `git pull` siempre.** El 11/06/2026 un push con una copia local vieja de `index.html` pisó la base GDT completa, el reset de contraseña, la tabla general y los links de invitación (restaurado en `76f113d`). Canario rápido: `rating:` debe aparecer **1248 veces** en `index.html`; si un commit chico toca miles de líneas, es una versión vieja pisando la actual.
 
+## Horarios
+
+- Los `fecha`/`hora` del FIXTURE están en **hora argentina** y se parsean con offset explícito: `new Date(`${fecha}T${hora}:00-03:00`)`. **No** "corregirlos" a UTC (`Z`): eso adelanta los bloqueos 3 horas (ya pasó, revertido en 2a53f55). JS los convierte solo a la zona del visitante.
+- Pronósticos: se bloquean **5 min** antes de cada partido (`isMatchLocked`). Ventanas del Gran DT: 30 min antes del primer partido de cada jornada, derivadas del FIXTURE (`jornadaLock`), sin fechas hardcodeadas.
+
 ## Convenciones
 
 - Castellano (argentino). Mensajes de UI informales.
