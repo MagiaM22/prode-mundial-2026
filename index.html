@@ -4845,6 +4845,14 @@ function buildStatsFromESPN(summary) {
 // ============================================================
 const FOTMOB_API = 'https://www.fotmob.com/api/data';
 
+// FotMob bloquea matchDetails desde browsers cross-origin → en localhost va por el proxy de servidor.ps1
+function fotmobFetch(path) {
+  const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  return isLocal
+    ? fetch(`${location.origin}/api/fotmob?path=${encodeURIComponent(path)}`)
+    : fetch(`${FOTMOB_API}/${path}`);
+}
+
 async function fotmobFindMatchId(matchId) {
   let partido = null, grupo = null;
   for (const group of Object.values(FIXTURE)) {
@@ -4857,7 +4865,7 @@ async function fotmobFindMatchId(matchId) {
   for (const offset of [0, 1]) {
     const d   = new Date(new Date(`${partido.fecha}T12:00:00-03:00`).getTime() + offset * 86400000);
     const ymd = d.toISOString().slice(0,10).replace(/-/g,'');
-    const res = await fetch(`${FOTMOB_API}/matches?date=${ymd}`);
+    const res = await fotmobFetch(`matches?date=${ymd}`);
     if (!res.ok) continue;
     const data = await res.json();
     for (const lg of (data.leagues || [])) {
@@ -4875,7 +4883,7 @@ async function fotmobFindMatchId(matchId) {
 async function mergeFotmobRatings(matchId, stats) {
   const fmId = await fotmobFindMatchId(matchId);
   if (!fmId) return false;
-  const res = await fetch(`${FOTMOB_API}/matchDetails?matchId=${fmId}`);
+  const res = await fotmobFetch(`matchDetails?matchId=${fmId}`);
   if (!res.ok) return false;
   const data   = await res.json();
   const lineup = data.content?.lineup;
@@ -4946,7 +4954,11 @@ async function syncGDTStats(matchId) {
       if (!_gdtMatchStats[s.match_id]) _gdtMatchStats[s.match_id] = [];
       _gdtMatchStats[s.match_id].push(s);
     }
-    showToast(`✅ ${toUpsert.length} estadísticas sincronizadas${conNotas ? ' (con notas y MVP)' : ''}`);
+    if (conNotas) showToast(`✅ ${toUpsert.length} estadísticas sincronizadas (con notas y MVP)`);
+    else {
+      const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      showToast(`✅ ${toUpsert.length} stats sincronizadas — ⚠️ sin notas${isLocal ? '' : ' (las notas se sincronizan desde localhost con servidor.ps1)'}`);
+    }
     renderGDTAdminStats();
   } catch(err) {
     const msg = (err.message.includes('fetch')||err.message.includes('Network'))

@@ -68,6 +68,30 @@ while ($listener.IsListening) {
             continue
         }
 
+        # -- Proxy: FotMob (notas del partido para el Gran DT) --
+        # FotMob bloquea matchDetails desde browsers cross-origin; por proxy funciona.
+        if ($path -eq 'api/fotmob') {
+            $fmPath = $req.QueryString['path']
+            $okPath = ($fmPath -match '^matches\?date=\d{8}$') -or ($fmPath -match '^matchDetails\?matchId=\d+$')
+            if (-not $okPath) {
+                Send-Json $resp 400 '{"error":"path invalido"}'
+                continue
+            }
+            try {
+                $wc = New-Object System.Net.WebClient
+                $wc.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36')
+                $wc.Encoding = [System.Text.Encoding]::UTF8
+                $json = $wc.DownloadString("https://www.fotmob.com/api/data/$fmPath")
+                Send-Json $resp 200 $json
+                Write-Host "  [FotMob] $fmPath OK" -ForegroundColor Green
+            } catch {
+                $msg = '{"error":"' + $_.Exception.Message.Replace('"','\"') + '"}'
+                Send-Json $resp 500 $msg
+                Write-Host "  [FotMob] Error $fmPath : $($_.Exception.Message)" -ForegroundColor Red
+            }
+            continue
+        }
+
         # -- Archivos estaticos --
         if ([string]::IsNullOrEmpty($path)) { $path = 'index.html' }
         $file = Join-Path $root $path
