@@ -3985,7 +3985,16 @@ let _gdtBenchPos  = { GK: null, DEF: null, MED: null, DEL: null };
 let _gdtPosFilter = 'all';
 let _gdtMatchStats = null;
 let _gdtAllTeams   = null;
-let _gdtTransfers  = { j2_used: false, j3_used: false };
+const GDT_SWAPS_PER_WINDOW = 3;
+let _gdtTransfers  = { j2: 0, j3: 0 };
+// Normaliza el formato guardado (versión vieja: {j2_used:bool}; nueva: {j2:contador})
+function gdtNormalizeTransfers(t) {
+  if (!t) return { j2: 0, j3: 0 };
+  return {
+    j2: typeof t.j2 === 'number' ? t.j2 : (t.j2_used ? 1 : 0),
+    j3: typeof t.j3 === 'number' ? t.j3 : (t.j3_used ? 1 : 0),
+  };
+}
 let _gdtSwapMode   = false;
 let _gdtSwapOut    = null;
 
@@ -4056,10 +4065,11 @@ function renderTransferStatus() {
     el.innerHTML = `<span class="tw-badge tw-locked">🔒 J3 en curso — equipo bloqueado</span>`;
     return;
   }
-  const used  = win === 'j2' ? _gdtTransfers.j2_used : _gdtTransfers.j3_used;
-  const label = win === 'j2' ? 'Jornada 2' : 'Jornada 3';
-  if (used) {
-    el.innerHTML = `<span class="tw-badge tw-used">✅ Cambio ${label} ya realizado</span>`;
+  const usados = win === 'j2' ? _gdtTransfers.j2 : _gdtTransfers.j3;
+  const libres = Math.max(GDT_SWAPS_PER_WINDOW - usados, 0);
+  const label  = win === 'j2' ? 'Jornada 2' : 'Jornada 3';
+  if (libres <= 0) {
+    el.innerHTML = `<span class="tw-badge tw-used">✅ Cambios ${label} agotados (${GDT_SWAPS_PER_WINDOW}/${GDT_SWAPS_PER_WINDOW})</span>`;
   } else if (_gdtSwapMode) {
     el.innerHTML = `
       <div class="gdt-swap-banner">
@@ -4072,7 +4082,7 @@ function renderTransferStatus() {
   } else {
     el.innerHTML = `
       <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
-        <span class="tw-badge tw-open">🔄 Ventana ${label} — 1 cambio disponible</span>
+        <span class="tw-badge tw-open">🔄 Ventana ${label} — ${libres} de ${GDT_SWAPS_PER_WINDOW} cambios disponibles</span>
         <button class="btn btn-sm" style="background:rgba(255,193,7,0.15);color:#ffc107;border:1px solid rgba(255,193,7,0.4)" onclick="startSwapMode()">Realizar cambio</button>
       </div>`;
   }
@@ -4106,8 +4116,10 @@ async function executeSwap(newId) {
   _gdtLineup[idx] = newId;
   if (_gdtCaptainId === _gdtSwapOut) _gdtCaptainId = null;
   const win = getTransferWindow();
-  if (win === 'j2') _gdtTransfers.j2_used = true;
-  if (win === 'j3') _gdtTransfers.j3_used = true;
+  const key = win === 'j2' ? 'j2' : (win === 'j3' ? 'j3' : null);
+  if (!key) { showToast('🔒 Fuera de ventana de cambios'); return; }
+  if (_gdtTransfers[key] >= GDT_SWAPS_PER_WINDOW) { showToast(`⚠️ Ya usaste los ${GDT_SWAPS_PER_WINDOW} cambios de esta ventana`); return; }
+  _gdtTransfers[key]++;
   const { error } = await sb.from('gdt_user_teams').upsert({
     user_id: currentUser.id, lineup: _gdtLineup, bench: _gdtBench,
     captain_id: _gdtCaptainId, presupuesto_usado: newBudget,
@@ -4117,7 +4129,8 @@ async function executeSwap(newId) {
   if (_gdtAllTeams) _gdtAllTeams[currentUser.id] = { lineup:[..._gdtLineup], bench:[..._gdtBench], captain_id:_gdtCaptainId };
   _gdtSwapMode = false; _gdtSwapOut = null;
   renderGDTTeamSlots(); renderGDTPool(); renderGDTBudget();
-  showToast(`✅ ${outP.nombre} → ${inP.nombre}`);
+  const libres = GDT_SWAPS_PER_WINDOW - _gdtTransfers[key];
+  showToast(`✅ ${outP.nombre} → ${inP.nombre}${libres > 0 ? ` — te quedan ${libres} cambio(s)` : ' — sin más cambios en esta ventana'}`);
 }
 
 // ============================================================
@@ -4134,7 +4147,7 @@ async function loadGDTData() {
     _gdtLineup    = teamRes.data.lineup     || [];
     _gdtBench     = teamRes.data.bench      || [];
     _gdtCaptainId = teamRes.data.captain_id || null;
-    _gdtTransfers = teamRes.data.transfers  || { j2_used: false, j3_used: false };
+    _gdtTransfers = gdtNormalizeTransfers(teamRes.data.transfers);
   }
   _gdtMatchStats = {};
   for (const s of (statsRes.data || [])) {
@@ -4468,6 +4481,7 @@ function renderGDTRules() {
   const notes = `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:0.9rem;line-height:1.6">
     • La <b style="color:var(--secondary)">nota del partido</b> es la base del puntaje; lo demás se suma encima. Si el jugador jugó pero no hay nota disponible, computa <b>6</b>.<br>
     • El <b style="color:var(--secondary)">capitán ⭐</b> suma <b>el doble</b> de puntos.<br>
+    • Entre fecha y fecha tenés <b>3 cambios</b> de titulares (ventanas J2 y J3; cierran 30 min antes del primer partido de cada fecha).<br>
     • Si un titular no juega, entra automáticamente un <b>suplente</b> del mismo puesto.<br>
     • La <b>valla invicta</b> (puntos para GK y DEF) cuenta solo si tu equipo no recibió goles.</div>`;
   return `<table style="width:100%;border-collapse:collapse;font-size:0.85rem"><thead>${head}</thead><tbody>${body}</tbody></table>${notes}`;

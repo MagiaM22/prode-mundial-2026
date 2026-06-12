@@ -35,7 +35,8 @@ Levanta un server local en **http://localhost:8080** y abre el navegador.
 - Config del juego (~línea 2386): `GDT_BUDGET = 1200`, 11 titulares + 4 suplentes, límites por puesto (`GDT_LIMITS`), scoring `GDT_PTS`.
 - **Para re-tunear precios:** reaplicar la fórmula **sobre `rating`** (nunca acumular sobre `precio`). Es una pasada idempotente: leer `rating`, recalcular `precio`.
 - Scoring (motor `calcGDTMatchPoints`): **base = nota del partido (1-10, FotMob; 6 de oficio si jugó sin nota)** + eventos `GDT_PTS`: gol GK10/DEF8/MED6/DEL5, valla invicta GK4/DEF3, asist 3, amarilla -1, roja -3, gol en contra -2, MVP +2, minutos +1 (60'+). Capitán ×2 (multiplica todo, nota incluida). Total redondeado a 1 decimal.
-- **Equipo de la Fecha** (pestaña ⭐, visible a todos): mejor 11 por jornada según puntos GDT, respetando `GDT_LIMITS`; se recalcula de `_gdtMatchStats` (mínimos por puesto primero, después los mejores hasta 11). Funciones `calcTeamOfWeek`/`renderTeamOfWeek`.
+- **Equipo de la Fecha** (pestaña ⭐, visible a todos): mejor 11 por jornada según puntos GDT en **formación fija 4-3-3**; se recalcula de `_gdtMatchStats`. Funciones `calcTeamOfWeek`/`renderTeamOfWeek`.
+- **Cambios**: **3 por ventana** (`GDT_SWAPS_PER_WINDOW`). Ventanas: J2 (de inicio J1 a 30 min antes de J2) y J3; después, bloqueado. Solo titulares. Contador en `gdt_user_teams.transfers` formato `{j2:n, j3:n}` (el viejo `{j2_used:bool}` se normaliza con `gdtNormalizeTransfers`). Guardar equipo exige 11 titulares + 4 suplentes + capitán.
 
 ### Cómo actualizar la base más adelante
 Convocatorias: prensa / `worldcuppass.com/<pais>-world-cup-squad-2026`.
