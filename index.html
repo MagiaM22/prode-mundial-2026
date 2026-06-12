@@ -1065,6 +1065,7 @@
       <button class="gdt-tab active" id="gdttab-equipo" onclick="showGDTTab('equipo',this)">⚽ Mi Equipo</button>
       <button class="gdt-tab" id="gdttab-cancha" onclick="showGDTTab('cancha',this)">🏟️ Cancha</button>
       <button class="gdt-tab" id="gdttab-tabla" onclick="showGDTTab('tabla',this)">🏆 Tabla GDT</button>
+      <button class="gdt-tab" id="gdttab-fecha" onclick="showGDTTab('fecha',this)">⭐ Equipo de la Fecha</button>
       <button class="gdt-tab" id="gdttab-stats" style="display:none" onclick="showGDTTab('stats',this)">📊 Stats <span class="admin-badge">ADMIN</span></button>
     </div>
 
@@ -1138,18 +1139,36 @@
       </div>
     </div>
 
+    <!-- EQUIPO DE LA FECHA -->
+    <div id="gdtpanel-fecha" style="display:none">
+      <div class="card">
+        <div class="flex-between" style="margin-bottom:0.75rem;flex-wrap:wrap;gap:0.5rem">
+          <h2 style="margin:0">⭐ Equipo de la Fecha</h2>
+          <div class="flex-gap">
+            <button class="btn btn-gold btn-sm" id="totw-j1" onclick="renderTeamOfWeek(1)">Fecha 1</button>
+            <button class="btn btn-ghost btn-sm" id="totw-j2" onclick="renderTeamOfWeek(2)">Fecha 2</button>
+            <button class="btn btn-ghost btn-sm" id="totw-j3" onclick="renderTeamOfWeek(3)">Fecha 3</button>
+          </div>
+        </div>
+        <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.75rem">
+          El mejor 11 de cada fecha según los puntos del Gran DT. Se actualiza solo a medida que se cargan las stats de los partidos.
+        </p>
+        <div id="totw-container"></div>
+      </div>
+    </div>
+
     <!-- STATS ADMIN -->
     <div id="gdtpanel-stats" style="display:none">
       <div class="card" style="margin-bottom:1rem">
         <div class="flex-between" style="margin-bottom:0.75rem">
           <h2 style="margin:0">📊 Estadísticas Gran DT</h2>
           <div class="flex-gap">
-            <span class="sofascore-badge">📡 Sofascore</span>
+            <span class="sofascore-badge">📡 football-data.org</span>
             <span style="font-size:0.75rem;color:var(--warning)">⚠️ Requiere servidor local</span>
           </div>
         </div>
         <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.75rem">
-          Sincroniza automáticamente goles, asistencias, tarjetas y MVP desde Sofascore para partidos finalizados.
+          Sincroniza goles, asistencias, tarjetas, cambios y minutos desde football-data.org para partidos finalizados. Usa la misma API key que Resultados.
         </p>
         <div id="gdt-admin-matches"></div>
       </div>
@@ -4095,7 +4114,7 @@ function renderGranDT() {
 }
 
 function showGDTTab(tab, btn) {
-  ['equipo','cancha','tabla','stats'].forEach(t => {
+  ['equipo','cancha','tabla','fecha','stats'].forEach(t => {
     const p = document.getElementById('gdtpanel-'+t);
     if (p) p.style.display = 'none';
     const b = document.getElementById('gdttab-'+t);
@@ -4106,7 +4125,70 @@ function showGDTTab(tab, btn) {
   if (btn) btn.classList.add('active');
   if (tab === 'cancha') renderGDTField();
   if (tab === 'tabla') renderGDTLeaderboard();
+  if (tab === 'fecha') renderTeamOfWeek(_totwJornada);
   if (tab === 'stats') renderGDTAdminStats();
+}
+
+// SVG de la cancha (líneas, círculo central, áreas)
+const GDT_FIELD_SVG = `
+      <svg class="gdt-field-lines" viewBox="0 0 200 100" preserveAspectRatio="none">
+        <line x1="100" y1="0" x2="100" y2="100" stroke="rgba(255,255,255,0.2)" stroke-width="0.5"/>
+        <circle cx="100" cy="50" r="15" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="0.5"/>
+        <circle cx="100" cy="50" r="1" fill="rgba(255,255,255,0.3)"/>
+        <rect x="0" y="17.5" width="16.5" height="65" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="0.5"/>
+        <path d="M 16.5 30 Q 8 30 8 50 Q 8 70 16.5 70" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="0.5"/>
+        <rect x="183.5" y="17.5" width="16.5" height="65" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="0.5"/>
+        <path d="M 183.5 30 Q 192 30 192 50 Q 192 70 183.5 70" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="0.5"/>
+        <line x1="0" y1="0" x2="200" y2="0" stroke="rgba(255,255,255,0.2)" stroke-width="0.5"/>
+        <line x1="0" y1="100" x2="200" y2="100" stroke="rgba(255,255,255,0.2)" stroke-width="0.5"/>
+      </svg>`;
+
+// Posiciones (left/top en %) de cada jugador en la cancha según su línea
+function gdtFieldLayout(byPos) {
+  return [
+    ...byPos.GK.map(p => ({...p, left: 8, top: 50})),
+    ...byPos.DEF.map((p, i) => {
+      const cnt = byPos.DEF.length;
+      let top;
+      if (cnt === 5) top = [20, 35, 50, 65, 80][i];
+      else if (cnt === 4) top = [25, 40, 60, 75][i];
+      else if (cnt === 3) top = [30, 50, 70][i];
+      else top = 20 + (60 / (cnt + 1)) * (i + 1);
+      return {...p, left: 22, top};
+    }),
+    ...byPos.MED.map((p, i) => {
+      const cnt = byPos.MED.length;
+      let left, top;
+      if (cnt === 5) {
+        left = [45, 45, 45, 50, 50][i];
+        top = [25, 50, 75, 35, 65][i];
+      } else if (cnt === 4) {
+        left = [45, 45, 50, 50][i];
+        top = [30, 70, 20, 80][i];
+      } else if (cnt === 3) {
+        left = [48, 50, 48][i];
+        top = [30, 50, 70][i];
+      } else if (cnt === 2) {
+        left = [48, 48][i];
+        top = [35, 65][i];
+      } else {
+        left = 48; top = 50;
+      }
+      return {...p, left, top};
+    }),
+    ...byPos.DEL.map((p, i) => {
+      const cnt = byPos.DEL.length;
+      let top;
+      if (cnt === 3) {
+        top = [30, 50, 70][i];
+      } else if (cnt === 2) {
+        top = [35, 65][i];
+      } else {
+        top = 50;
+      }
+      return {...p, left: 78, top};
+    })
+  ];
 }
 
 function renderGDTField() {
@@ -4130,67 +4212,8 @@ function renderGDTField() {
 
   const fieldHTML = `
     <div class="gdt-field">
-      <svg class="gdt-field-lines" viewBox="0 0 200 100" preserveAspectRatio="none">
-        <!-- Línea central -->
-        <line x1="100" y1="0" x2="100" y2="100" stroke="rgba(255,255,255,0.2)" stroke-width="0.5"/>
-        <!-- Círculo central -->
-        <circle cx="100" cy="50" r="15" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="0.5"/>
-        <!-- Punto central -->
-        <circle cx="100" cy="50" r="1" fill="rgba(255,255,255,0.3)"/>
-        <!-- Área izquierda -->
-        <rect x="0" y="17.5" width="16.5" height="65" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="0.5"/>
-        <path d="M 16.5 30 Q 8 30 8 50 Q 8 70 16.5 70" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="0.5"/>
-        <!-- Área derecha -->
-        <rect x="183.5" y="17.5" width="16.5" height="65" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="0.5"/>
-        <path d="M 183.5 30 Q 192 30 192 50 Q 192 70 183.5 70" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="0.5"/>
-        <!-- Líneas de fondo -->
-        <line x1="0" y1="0" x2="200" y2="0" stroke="rgba(255,255,255,0.2)" stroke-width="0.5"/>
-        <line x1="0" y1="100" x2="200" y2="100" stroke="rgba(255,255,255,0.2)" stroke-width="0.5"/>
-      </svg>
-      ${[
-        ...byPos.GK.map((p, i) => ({...p, left: 8, top: 50})),
-        ...byPos.DEF.map((p, i) => {
-          const cnt = byPos.DEF.length;
-          let top;
-          if (cnt === 5) top = [20, 35, 50, 65, 80][i];
-          else if (cnt === 4) top = [25, 40, 60, 75][i];
-          else if (cnt === 3) top = [30, 50, 70][i];
-          else top = 20 + (60 / (cnt + 1)) * (i + 1);
-          return {...p, left: 22, top};
-        }),
-        ...byPos.MED.map((p, i) => {
-          const cnt = byPos.MED.length;
-          let left, top;
-          if (cnt === 5) {
-            left = [45, 45, 45, 50, 50][i];
-            top = [25, 50, 75, 35, 65][i];
-          } else if (cnt === 4) {
-            left = [45, 45, 50, 50][i];
-            top = [30, 70, 20, 80][i];
-          } else if (cnt === 3) {
-            left = [48, 50, 48][i];
-            top = [30, 50, 70][i];
-          } else if (cnt === 2) {
-            left = [48, 48][i];
-            top = [35, 65][i];
-          } else {
-            left = 48; top = 50;
-          }
-          return {...p, left, top};
-        }),
-        ...byPos.DEL.map((p, i) => {
-          const cnt = byPos.DEL.length;
-          let top;
-          if (cnt === 3) {
-            top = [30, 50, 70][i];
-          } else if (cnt === 2) {
-            top = [35, 65][i];
-          } else {
-            top = 50;
-          }
-          return {...p, left: 78, top};
-        })
-      ].map(p => `<div class="gdt-field-player ${p.isCaptain ? 'gdt-field-captain' : ''}" style="left:${p.left}%;top:${p.top}%;z-index:10" title="${p.nombre}"><span class="num">${String(p.num).padStart(2,'0')}</span><span class="name">${p.nombre.split(' ').pop().substring(0,6)}</span></div>`).join('')}
+      ${GDT_FIELD_SVG}
+      ${gdtFieldLayout(byPos).map(p => `<div class="gdt-field-player ${p.isCaptain ? 'gdt-field-captain' : ''}" style="left:${p.left}%;top:${p.top}%;z-index:10" title="${p.nombre}"><span class="num">${String(p.num).padStart(2,'0')}</span><span class="name">${p.nombre.split(' ').pop().substring(0,6)}</span></div>`).join('')}
     </div>
     <div style="margin-top:1rem;display:grid;grid-template-columns:repeat(4,1fr);gap:0.5rem;font-size:0.8rem">
       <div style="padding:0.5rem;background:rgba(255,255,255,0.04);border-radius:6px"><strong>${byPos.GK.length}</strong> GK</div>
@@ -4654,7 +4677,7 @@ function renderGDTAdminStats() {
         <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
           ${synced ? `<span style="color:var(--success);font-size:0.78rem">✅ ${stats.length} jugadores</span>` : ''}
           ${isLocal
-            ? `<button class="sofascore-btn" onclick="syncSofascore('${m.id}')">📡 Sync Sofascore</button>`
+            ? `<button class="sofascore-btn" onclick="syncGDTStats('${m.id}')">📡 Sync stats</button>`
             : `<span style="font-size:0.72rem;color:var(--text-muted)">Sync: requiere localhost</span>`}
         </div>
       </div>
@@ -4667,19 +4690,170 @@ function renderGDTAdminStats() {
 }
 
 // ============================================================
-// GRAN DT — SYNC SOFASCORE
+// GRAN DT — EQUIPO DE LA FECHA
 // ============================================================
-async function syncSofascore(matchId) {
-  showToast('⏳ Sincronizando con Sofascore...');
+let _totwJornada = 1;
+
+// Mejor 11 de la jornada según puntos GDT, respetando GDT_LIMITS
+function calcTeamOfWeek(j) {
+  const slugIndex = {};
+  for (const p of GDT_PLAYERS) slugIndex[gdtSlug(p.nombre)] = p;
+
+  const byId = new Map();
+  let matchesConStats = 0;
+  for (const group of Object.values(FIXTURE)) {
+    for (const partido of group.partidos) {
+      if (partido.jornada !== j) continue;
+      const statsList = _gdtMatchStats?.[partido.id];
+      if (!statsList) continue;
+      matchesConStats++;
+      for (const s of statsList) {
+        const p = slugIndex[s.player_slug];
+        if (!p) continue;
+        const pts  = calcGDTMatchPoints(p.id, partido.id, null);
+        const prev = byId.get(p.id);
+        if (prev) prev.pts += pts; else byId.set(p.id, { player: p, pts });
+      }
+    }
+  }
+  if (!matchesConStats) return { matches: 0, team: [] };
+
+  const byPos = { GK:[], DEF:[], MED:[], DEL:[] };
+  for (const c of byId.values()) byPos[c.player.pos]?.push(c);
+  for (const pos of Object.keys(byPos)) byPos[pos].sort((a,b) => b.pts - a.pts);
+
+  // Mínimos por puesto primero, después los mejores restantes hasta 11
+  const team = [], count = { GK:0, DEF:0, MED:0, DEL:0 };
+  for (const pos of ['GK','DEF','MED','DEL']) {
+    const t = byPos[pos].splice(0, GDT_LIMITS[pos].min);
+    team.push(...t); count[pos] = t.length;
+  }
+  const resto = [...byPos.DEF, ...byPos.MED, ...byPos.DEL].sort((a,b) => b.pts - a.pts);
+  for (const c of resto) {
+    if (team.length >= GDT_SQUAD_SIZE) break;
+    if (count[c.player.pos] >= GDT_LIMITS[c.player.pos].max) continue;
+    team.push(c); count[c.player.pos]++;
+  }
+  return { matches: matchesConStats, team };
+}
+
+function renderTeamOfWeek(j) {
+  _totwJornada = j;
+  [1,2,3].forEach(n => {
+    const b = document.getElementById('totw-j'+n);
+    if (b) { b.classList.toggle('btn-gold', n === j); b.classList.toggle('btn-ghost', n !== j); }
+  });
+  const el = document.getElementById('totw-container');
+  if (!el) return;
+  const { matches, team } = calcTeamOfWeek(j);
+  if (!team.length) {
+    el.innerHTML = `<div class="empty-state"><div class="icon">⏳</div><h3>Todavía no hay stats de la fecha ${j}</h3><p>El equipo se arma solo a medida que se cargan las estadísticas de los partidos.</p></div>`;
+    return;
+  }
+  const byPos = { GK:[], DEF:[], MED:[], DEL:[] };
+  for (const c of team) byPos[c.player.pos].push({ ...c.player, pts: c.pts });
+  const total = team.reduce((s,c) => s + c.pts, 0);
+
+  el.innerHTML = `
+    <div class="gdt-field">
+      ${GDT_FIELD_SVG}
+      ${gdtFieldLayout(byPos).map(p => `<div class="gdt-field-player" style="left:${p.left}%;top:${p.top}%;z-index:10" title="${p.nombre} — ${p.pts} pts"><span class="num">${p.pts}</span><span class="name">${p.nombre.split(' ').pop().substring(0,6)}</span></div>`).join('')}
+    </div>
+    <div style="margin:0.75rem 0 0.5rem;font-size:0.85rem;color:var(--text-muted)">${matches} partido(s) computados · <strong style="color:var(--secondary)">${total} pts</strong> en total</div>
+    <table class="gdt-stat-table">
+      <thead><tr><th style="text-align:left">Jugador</th><th style="text-align:left">Selección</th><th>Pos</th><th>Pts</th></tr></thead>
+      <tbody>${['GK','DEF','MED','DEL'].flatMap(pos => byPos[pos]).map(p => `
+        <tr><td>${esc(p.nombre)}</td><td>${p.flag} ${esc(p.seleccion)}</td><td>${p.pos}</td><td><strong>${p.pts}</strong></td></tr>`).join('')}</tbody>
+    </table>
+  `;
+}
+
+// ============================================================
+// GRAN DT — SYNC STATS (football-data.org)
+// ============================================================
+// Cache: match_id del fixture → id de partido en football-data
+let _fdMatchIndex = null;
+
+async function loadFDMatchIndex(apiKey) {
+  if (_fdMatchIndex) return _fdMatchIndex;
+  const res = await fetch(`${location.origin}/api/sync?key=${encodeURIComponent(apiKey)}`);
+  if (!res.ok) {
+    const err = await res.json().catch(()=>({}));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  _fdMatchIndex = {};
+  for (const m of (data.matches || [])) {
+    const homeES = TEAM_API_MAP[m.homeTeam?.name] || TEAM_API_MAP[m.homeTeam?.shortName];
+    const awayES = TEAM_API_MAP[m.awayTeam?.name] || TEAM_API_MAP[m.awayTeam?.shortName];
+    if (!homeES || !awayES) continue;
+    for (const group of Object.values(FIXTURE)) {
+      for (const p of group.partidos) {
+        if (group.equipos[p.local] === homeES && group.equipos[p.visit] === awayES) _fdMatchIndex[p.id] = m.id;
+      }
+    }
+  }
+  return _fdMatchIndex;
+}
+
+// Convierte el detalle de football-data (goals/bookings/substitutions/lineups) a filas de gdt_match_stats.
+// football-data no informa MVP: is_mvp queda en false.
+function buildStatsFromFDMatch(match) {
+  const FT = 90;
+  const teamES = t => TEAM_API_MAP[t?.name] || TEAM_API_MAP[t?.shortName] || t?.name || '';
+  const homeES = teamES(match.homeTeam), awayES = teamES(match.awayTeam);
+  const ps = {};
+  const ensure = (player, team) => {
+    const name = player?.name;
+    if (!name) return null;
+    if (!ps[name]) ps[name] = { player_name:name, team, goals:0, assists:0, yellow_cards:0, red_cards:0, own_goals:0, minutes_played:0, is_mvp:false };
+    return ps[name];
+  };
+  // Titulares arrancan con 90'; suplentes con 0 hasta que entren
+  for (const [team, es] of [[match.homeTeam, homeES], [match.awayTeam, awayES]]) {
+    for (const p of (team?.lineup || [])) { const r = ensure(p, es); if (r) r.minutes_played = FT; }
+    for (const p of (team?.bench  || [])) ensure(p, es);
+  }
+  for (const s of (match.substitutions || [])) {
+    const es  = teamES(s.team);
+    const min = (s.minute ?? FT);
+    const out = ensure(s.playerOut, es);
+    const inn = ensure(s.playerIn, es);
+    if (out) out.minutes_played = min;
+    if (inn) inn.minutes_played = Math.max(FT - min, 0);
+  }
+  for (const g of (match.goals || [])) {
+    const forES = teamES(g.team);
+    const own   = g.type === 'OWN';
+    const sc    = ensure(g.scorer, own ? (forES === homeES ? awayES : homeES) : forES);
+    if (sc) { if (own) sc.own_goals++; else sc.goals++; }
+    if (!own && g.assist) { const as = ensure(g.assist, forES); if (as) as.assists++; }
+  }
+  for (const b of (match.bookings || [])) {
+    const r = ensure(b.player, teamES(b.team));
+    if (!r) continue;
+    if (String(b.card || '').includes('RED')) r.red_cards++;
+    else r.yellow_cards++;
+  }
+  return Object.values(ps);
+}
+
+async function syncGDTStats(matchId) {
+  const apiKey = localStorage.getItem('prode_apikey') || document.getElementById('api-key-input')?.value.trim() || '';
+  if (!apiKey) { showToast('❌ Ingresá tu API key de football-data.org en Resultados (ADMIN)'); return; }
+  showToast('⏳ Sincronizando stats con football-data...');
   try {
-    const res = await fetch(`${location.origin}/api/sofascore?match_id=${matchId}`);
+    const index = await loadFDMatchIndex(apiKey);
+    const fdId  = index[matchId];
+    if (!fdId) throw new Error(`Partido ${matchId} no encontrado en football-data (¿ya se jugó?)`);
+    const res = await fetch(`${location.origin}/api/fdmatch?id=${fdId}&key=${encodeURIComponent(apiKey)}`);
     if (!res.ok) {
       const err = await res.json().catch(()=>({}));
       throw new Error(err.error || `HTTP ${res.status}`);
     }
     const data  = await res.json();
-    const stats = data.stats || [];
-    if (!stats.length) { showToast('ℹ️ Sin stats disponibles en Sofascore para este partido'); return; }
+    const stats = buildStatsFromFDMatch(data.match || data);
+    if (!stats.length) { showToast('ℹ️ football-data todavía no tiene los datos de este partido'); return; }
 
     const toUpsert = stats.map(s => ({
       match_id:       matchId,

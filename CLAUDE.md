@@ -11,9 +11,11 @@ Levanta un server local en **http://localhost:8080** y abre el navegador.
 ## Arquitectura
 
 - **`index.html`** — toda la app: maqueta, estilos y lógica JS inline.
-- **`servidor.ps1`** — server estático en PowerShell + **proxy** a APIs externas (resuelve CORS):
-  - `/api/sync` → football-data.org (fixture/resultados, necesita API key)
-  - `/api/sofascore` → Sofascore (stats por partido para el Gran DT: goles, asistencias, tarjetas, MVP)
+- **`servidor.ps1`** — server estático en PowerShell + **proxy** a football-data.org (resuelve CORS):
+  - `/api/sync` → lista de partidos del Mundial (resultados; necesita API key)
+  - `/api/fdmatch?id=<fd_id>` → detalle de un partido (goles, tarjetas, cambios, alineaciones) para las stats del Gran DT; misma key.
+  - ⚠️ Sofascore se descartó (06/2026): bloquea requests no-browser con 403 "challenge". No volver a intentarlo.
+  - football-data no informa MVP → `is_mvp` queda `false` (la regla del +2 solo aplica si se carga a mano en Supabase).
 - **`iniciar.bat`** — lanza el server y abre el navegador.
 - **Backend de datos y auth: Supabase** (cliente JS por CDN, `SUPABASE_URL`/`SUPABASE_KEY` en index.html). Tablas: `profiles`, `tournaments`, predicciones, resultados, equipos GDT.
 
@@ -31,7 +33,8 @@ Levanta un server local en **http://localhost:8080** y abre el navegador.
   - **`est:1`** (opcional) = precio estimado a ojo (jugador que no figura en EA FC 26: juveniles, selecciones chicas).
 - Config del juego (~línea 2386): `GDT_BUDGET = 1200`, 11 titulares + 4 suplentes, límites por puesto (`GDT_LIMITS`), scoring `GDT_PTS`.
 - **Para re-tunear precios:** reaplicar la fórmula **sobre `rating`** (nunca acumular sobre `precio`). Es una pasada idempotente: leer `rating`, recalcular `precio`.
-- Scoring `GDT_PTS` (validado vs FPL y WC Fantasy oficial): gol GK10/DEF8/MED6/DEL5, valla invicta GK4/DEF3, asist 3, amarilla -1, roja -3, gol en contra -2, MVP +2, minutos +1 (60'+). Capitán ×2. Motor de cálculo: `calcGDTMatchPoints` (~línea 4189).
+- Scoring `GDT_PTS` (validado vs FPL y WC Fantasy oficial): gol GK10/DEF8/MED6/DEL5, valla invicta GK4/DEF3, asist 3, amarilla -1, roja -3, gol en contra -2, MVP +2, minutos +1 (60'+). Capitán ×2. Motor de cálculo: `calcGDTMatchPoints`.
+- **Equipo de la Fecha** (pestaña ⭐, visible a todos): mejor 11 por jornada según puntos GDT, respetando `GDT_LIMITS`; se recalcula de `_gdtMatchStats` (mínimos por puesto primero, después los mejores hasta 11). Funciones `calcTeamOfWeek`/`renderTeamOfWeek`.
 
 ### Cómo actualizar la base más adelante
 Convocatorias: prensa / `worldcuppass.com/<pais>-world-cup-squad-2026`.
