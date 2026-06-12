@@ -1256,7 +1256,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // ============================================================
 // FIXTURE
 // ============================================================
-// Horarios en hora argentina (UTC-3). Bloqueo = 30 min antes del inicio.
+// Horarios en hora argentina (UTC-3). Bloqueo = 5 min antes del inicio.
 const FIXTURE = {
   A: {
     nombre: 'Grupo A', flag: '🇲🇽',
@@ -1840,7 +1840,7 @@ function renderUpcomingMatches() {
 function isMatchLocked(partido) {
   const hora = partido.hora || '20:00';
   const matchStart = new Date(`${partido.fecha}T${hora}:00-03:00`);
-  return Date.now() >= matchStart.getTime() - 30 * 60 * 1000;
+  return Date.now() >= matchStart.getTime() - 5 * 60 * 1000;
 }
 
 // ============================================================
