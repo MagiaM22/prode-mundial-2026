@@ -1241,7 +1241,7 @@
           </div>
         </div>
         <p style="font-size:0.82rem; color:var(--text-muted); margin-bottom:0.75rem">
-          Ingresá tu API key gratuita de <strong style="color:var(--text)">football-data.org</strong> y los resultados se sincronizan solos cuando termina cada partido.
+          Ingresá tu API key gratuita de <strong style="color:var(--text)">football-data.org</strong> y los resultados se sincronizan solos cuando termina cada partido. Con "Auto cada 5 min" activado también se sincronizan solas las <strong style="color:var(--text)">stats y notas del Gran DT</strong>.
           <br><span style="color:var(--warning)">⚠️ La sync funciona solo desde localhost (servidor.ps1).</span>
         </p>
         <div style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:flex-end">
@@ -2438,8 +2438,30 @@ let autoSyncInterval = null;
 
 function toggleAutoSync() {
   const on = document.getElementById('auto-sync-toggle').checked;
-  if (on) { syncFromAPI(); autoSyncInterval = setInterval(syncFromAPI, 5 * 60 * 1000); }
-  else    { clearInterval(autoSyncInterval); autoSyncInterval = null; }
+  if (on) {
+    const tick = async () => { await syncFromAPI(); await syncPendingGDTStats(); };
+    tick();
+    autoSyncInterval = setInterval(tick, 5 * 60 * 1000);
+  }
+  else { clearInterval(autoSyncInterval); autoSyncInterval = null; }
+}
+
+// Sincroniza solas las stats GDT de partidos con resultado pero sin stats
+// (las notas se reintentan una vez por sesión si FotMob aún no las tenía)
+const _autoNotasTried = new Set();
+async function syncPendingGDTStats() {
+  for (const group of Object.values(FIXTURE)) {
+    for (const p of group.partidos) {
+      if (!(_results || {})[p.id]) continue;
+      const rows     = _gdtMatchStats?.[p.id];
+      const sinStats = !rows || !rows.length;
+      const sinNotas = !sinStats && !rows.some(r => r.rating != null);
+      if (sinStats || (sinNotas && !_autoNotasTried.has(p.id))) {
+        if (sinNotas) _autoNotasTried.add(p.id);
+        await syncGDTStats(p.id, true);
+      }
+    }
+  }
 }
 
 async function syncFromAPI() {
@@ -4512,7 +4534,7 @@ function toggleGDTPlayer(id) {
     const canBench   = _gdtBench.length < GDT_BENCH_SIZE;
     if (canStarter)       { _gdtLineup.push(id); }
     else if (canBench)    { _gdtBench.push(id); showToast(`📋 ${p.nombre} agregado al banco`); }
-    else { showToast('⚠️ Equipo completo (11 titulares + 3 suplentes)'); return; }
+    else { showToast(`⚠️ Equipo completo (${GDT_SQUAD_SIZE} titulares + ${GDT_BENCH_SIZE} suplentes)`); return; }
   }
   renderGDTTeamSlots(); renderGDTPool(); renderGDTBudget();
 }
@@ -4972,15 +4994,16 @@ async function mergeFotmobRatings(matchId, stats) {
   return true;
 }
 
-async function syncGDTStats(matchId) {
-  showToast('⏳ Sincronizando stats desde ESPN...');
+async function syncGDTStats(matchId, silent) {
+  const toast = m => { if (!silent) showToast(m); };
+  toast('⏳ Sincronizando stats desde ESPN...');
   try {
     const ev  = await espnFindEvent(matchId);
     const res = await fetch(`${ESPN_API}/summary?event=${ev.id}`);
     if (!res.ok) throw new Error(`ESPN summary HTTP ${res.status}`);
     const summary = await res.json();
     const stats   = buildStatsFromESPN(summary);
-    if (!stats.length) { showToast('ℹ️ ESPN todavía no tiene los datos de este partido'); return; }
+    if (!stats.length) { toast('ℹ️ ESPN todavía no tiene los datos de este partido'); return; }
 
     // Notas del partido — best effort: si FotMob no responde, se sincroniza sin notas
     let conNotas = false;
@@ -5007,7 +5030,7 @@ async function syncGDTStats(matchId) {
       .upsert(toUpsert, { onConflict: 'match_id,player_slug' });
     if (error && /rating/i.test(error.message)) {
       // La columna rating todavía no existe en Supabase: sincronizar sin notas
-      showToast('⚠️ Falta la columna rating en Supabase — sync sin notas');
+      toast('⚠️ Falta la columna rating en Supabase — sync sin notas');
       ({ error } = await sb.from('gdt_match_stats')
         .upsert(toUpsert.map(({ rating, ...r }) => r), { onConflict: 'match_id,player_slug' }));
     }
@@ -5020,17 +5043,17 @@ async function syncGDTStats(matchId) {
       if (!_gdtMatchStats[s.match_id]) _gdtMatchStats[s.match_id] = [];
       _gdtMatchStats[s.match_id].push(s);
     }
-    if (conNotas) showToast(`✅ ${toUpsert.length} estadísticas sincronizadas (con notas y MVP)`);
+    if (conNotas) toast(`✅ ${toUpsert.length} estadísticas sincronizadas (con notas y MVP)`);
     else {
       const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-      showToast(`✅ ${toUpsert.length} stats sincronizadas — ⚠️ sin notas${isLocal ? '' : ' (las notas se sincronizan desde localhost con servidor.ps1)'}`);
+      toast(`✅ ${toUpsert.length} stats sincronizadas — ⚠️ sin notas${isLocal ? '' : ' (las notas se sincronizan desde localhost con servidor.ps1)'}`);
     }
     renderGDTAdminStats();
   } catch(err) {
     const msg = (err.message.includes('fetch')||err.message.includes('Network'))
       ? 'No se pudo conectar a ESPN. Probá de nuevo en un rato.'
       : err.message;
-    showToast('❌ ' + msg);
+    toast('❌ ' + msg);
   }
 }
 
