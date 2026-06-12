@@ -4663,6 +4663,7 @@ function renderGDTAdminStats() {
       <td>${s.yellow_cards}</td><td>${s.red_cards}</td>
       <td>${s.own_goals}</td>
       <td>${s.minutes_played >= 60 ? '✅' : s.minutes_played > 0 ? s.minutes_played+"'" : '—'}</td>
+      <td>${s.rating != null ? `<strong>${s.rating}</strong>` : '—'}</td>
       <td>${s.is_mvp ? '★' : ''}</td>
     </tr>`).join('');
 
@@ -4679,7 +4680,7 @@ function renderGDTAdminStats() {
       </div>
       ${synced ? `<table class="gdt-stat-table">
         <thead><tr><th style="text-align:left">Jugador</th><th style="text-align:left">Selección</th>
-        <th>⚽</th><th>🅰</th><th>🟨</th><th>🟥</th><th>AG</th><th>⏱</th><th>★</th></tr></thead>
+        <th>⚽</th><th>🅰</th><th>🟨</th><th>🟥</th><th>AG</th><th>⏱</th><th>Nota</th><th>★</th></tr></thead>
         <tbody>${rows}</tbody></table>` : '<div style="font-size:0.8rem;color:var(--text-muted);padding:0.2rem 0">Sin estadísticas sincronizadas</div>'}
     </div>`;
   }).join('');
@@ -4708,7 +4709,7 @@ function calcTeamOfWeek(j) {
         if (!p) continue;
         const pts  = calcGDTMatchPoints(p.id, partido.id, null);
         const prev = byId.get(p.id);
-        if (prev) prev.pts += pts; else byId.set(p.id, { player: p, pts });
+        if (prev) prev.pts += pts; else byId.set(p.id, { player: p, pts, nota: s.rating ?? null });
       }
     }
   }
@@ -4747,7 +4748,7 @@ function renderTeamOfWeek(j) {
     return;
   }
   const byPos = { GK:[], DEF:[], MED:[], DEL:[] };
-  for (const c of team) byPos[c.player.pos].push({ ...c.player, pts: c.pts });
+  for (const c of team) byPos[c.player.pos].push({ ...c.player, pts: c.pts, nota: c.nota });
   const total = team.reduce((s,c) => s + c.pts, 0);
 
   el.innerHTML = `
@@ -4757,9 +4758,9 @@ function renderTeamOfWeek(j) {
     </div>
     <div style="margin:0.75rem 0 0.5rem;font-size:0.85rem;color:var(--text-muted)">${matches} partido(s) computados · <strong style="color:var(--secondary)">${total} pts</strong> en total</div>
     <table class="gdt-stat-table">
-      <thead><tr><th style="text-align:left">Jugador</th><th style="text-align:left">Selección</th><th>Pos</th><th>Pts</th></tr></thead>
+      <thead><tr><th style="text-align:left">Jugador</th><th style="text-align:left">Selección</th><th>Pos</th><th>Nota</th><th>Pts</th></tr></thead>
       <tbody>${['GK','DEF','MED','DEL'].flatMap(pos => byPos[pos]).map(p => `
-        <tr><td>${esc(p.nombre)}</td><td>${p.flag} ${esc(p.seleccion)}</td><td>${p.pos}</td><td><strong>${p.pts}</strong></td></tr>`).join('')}</tbody>
+        <tr><td>${esc(p.nombre)}</td><td>${p.flag} ${esc(p.seleccion)}</td><td>${p.pos}</td><td>${p.nota != null ? p.nota : '—'}</td><td><strong>${p.pts}</strong></td></tr>`).join('')}</tbody>
     </table>
   `;
 }
@@ -4839,6 +4840,64 @@ function buildStatsFromESPN(summary) {
   return Object.values(ps);
 }
 
+// ============================================================
+// GRAN DT — NOTAS DEL PARTIDO (FotMob)
+// ============================================================
+const FOTMOB_API = 'https://www.fotmob.com/api/data';
+
+async function fotmobFindMatchId(matchId) {
+  let partido = null, grupo = null;
+  for (const group of Object.values(FIXTURE)) {
+    const p = group.partidos.find(x => x.id === matchId);
+    if (p) { partido = p; grupo = group; break; }
+  }
+  if (!partido) return null;
+  const localES = grupo.equipos[partido.local], visitES = grupo.equipos[partido.visit];
+  // FotMob agrupa por fecha UTC: probar la fecha del fixture (ART) y el día siguiente
+  for (const offset of [0, 1]) {
+    const d   = new Date(new Date(`${partido.fecha}T12:00:00-03:00`).getTime() + offset * 86400000);
+    const ymd = d.toISOString().slice(0,10).replace(/-/g,'');
+    const res = await fetch(`${FOTMOB_API}/matches?date=${ymd}`);
+    if (!res.ok) continue;
+    const data = await res.json();
+    for (const lg of (data.leagues || [])) {
+      if (!/world cup/i.test(lg.name || '')) continue;
+      for (const m of (lg.matches || [])) {
+        const names = [m.home?.name, m.away?.name].map(n => TEAM_API_MAP[n] || n);
+        if (names.includes(localES) && names.includes(visitES)) return m.id;
+      }
+    }
+  }
+  return null;
+}
+
+// Mezcla la nota FotMob (1-10) en las filas de stats y marca como MVP al mejor puntuado
+async function mergeFotmobRatings(matchId, stats) {
+  const fmId = await fotmobFindMatchId(matchId);
+  if (!fmId) return false;
+  const res = await fetch(`${FOTMOB_API}/matchDetails?matchId=${fmId}`);
+  if (!res.ok) return false;
+  const data   = await res.json();
+  const lineup = data.content?.lineup;
+  // Doble clave: slug exacto + tokens ordenados (FotMob invierte nombres asiáticos: "In-Beom Hwang" vs "Hwang In-Beom")
+  const sorted = n => gdtSlug(n).split(' ').sort().join(' ');
+  const notas  = {}, notasSorted = {};
+  for (const side of [lineup?.homeTeam, lineup?.awayTeam]) {
+    for (const j of [...(side?.starters || []), ...(side?.subs || [])]) {
+      const r = j.performance?.rating;
+      if (r != null) { notas[gdtSlug(j.name)] = r; notasSorted[sorted(j.name)] = r; }
+    }
+  }
+  if (!Object.keys(notas).length) return false;
+  let best = null;
+  for (const s of stats) {
+    const r = notas[gdtSlug(s.player_name)] ?? notasSorted[sorted(s.player_name)];
+    if (r != null) { s.rating = r; if (!best || r > best.rating) best = s; }
+  }
+  if (best) best.is_mvp = true;
+  return true;
+}
+
 async function syncGDTStats(matchId) {
   showToast('⏳ Sincronizando stats desde ESPN...');
   try {
@@ -4848,6 +4907,11 @@ async function syncGDTStats(matchId) {
     const summary = await res.json();
     const stats   = buildStatsFromESPN(summary);
     if (!stats.length) { showToast('ℹ️ ESPN todavía no tiene los datos de este partido'); return; }
+
+    // Notas del partido — best effort: si FotMob no responde, se sincroniza sin notas
+    let conNotas = false;
+    try { conNotas = await mergeFotmobRatings(matchId, stats); }
+    catch(e) { console.warn('FotMob sin datos:', e.message); }
 
     const toUpsert = stats.map(s => ({
       match_id:       matchId,
@@ -4861,11 +4925,18 @@ async function syncGDTStats(matchId) {
       own_goals:      s.own_goals    || 0,
       minutes_played: s.minutes_played || 0,
       is_mvp:         s.is_mvp       || false,
+      rating:         s.rating       ?? null,
       synced_at:      new Date().toISOString(),
     }));
 
-    const { error } = await sb.from('gdt_match_stats')
+    let { error } = await sb.from('gdt_match_stats')
       .upsert(toUpsert, { onConflict: 'match_id,player_slug' });
+    if (error && /rating/i.test(error.message)) {
+      // La columna rating todavía no existe en Supabase: sincronizar sin notas
+      showToast('⚠️ Falta la columna rating en Supabase — sync sin notas');
+      ({ error } = await sb.from('gdt_match_stats')
+        .upsert(toUpsert.map(({ rating, ...r }) => r), { onConflict: 'match_id,player_slug' }));
+    }
     if (error) throw error;
 
     // Reload stats cache
@@ -4875,7 +4946,7 @@ async function syncGDTStats(matchId) {
       if (!_gdtMatchStats[s.match_id]) _gdtMatchStats[s.match_id] = [];
       _gdtMatchStats[s.match_id].push(s);
     }
-    showToast(`✅ ${toUpsert.length} estadísticas sincronizadas`);
+    showToast(`✅ ${toUpsert.length} estadísticas sincronizadas${conNotas ? ' (con notas y MVP)' : ''}`);
     renderGDTAdminStats();
   } catch(err) {
     const msg = (err.message.includes('fetch')||err.message.includes('Network'))
