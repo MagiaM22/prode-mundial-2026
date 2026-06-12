@@ -1267,7 +1267,7 @@
 // ============================================================
 const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
-const ADMIN_EMAIL   = 'marcosjmanzi@gmail.com';
+const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = '00000000-0000-0000-0000-000000000001';
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -1513,7 +1513,7 @@ function showRecoveryForm() {
 
 async function onUserReady(user) {
   currentUser = user;
-  isAdmin = (user.email === ADMIN_EMAIL);
+  isAdmin = ADMIN_EMAILS.includes(user.email);
 
   // Get or create profile
   const { data: profile } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
