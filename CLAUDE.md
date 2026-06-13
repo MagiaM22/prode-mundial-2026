@@ -38,6 +38,8 @@ Levanta un server local en **http://localhost:8080** y abre el navegador.
 - **Equipo de la Fecha** (pestaña ⭐, visible a todos): mejor 11 por jornada según puntos GDT en **formación fija 4-3-3**; se recalcula de `_gdtMatchStats`. Funciones `calcTeamOfWeek`/`renderTeamOfWeek`.
 - **Cambios**: **3 por ventana** (`GDT_SWAPS_PER_WINDOW`). Ventanas: J2 (de inicio J1 a 30 min antes de J2) y J3; después, bloqueado. Solo titulares. Contador en `gdt_user_teams.transfers` formato `{j2:n, j3:n, fix:n, fixSeen:bool}` (el viejo `{j2_used:bool}` se normaliza con `gdtNormalizeTransfers`). Guardar equipo exige 11 titulares + 4 suplentes + capitán.
 - **Arreglo por única vez** (`GDT_FIX_CHANGES=6`): SOLO los equipos **rotos** (`gdtTeamRoto()`: ≠11 titulares, ≠4 suplentes, o >1200 fichas) reciben edición libre fuera de ventana, con tope de 6 cambios (contados vs `_gdtBaseline` al guardar). `_gdtFixEligible` se calcula al cargar y se apaga al guardar un equipo válido. Los equipos válidos NO reciben nada. Modal "HOLA MAÑERO" (`maybeShowFixWelcome`) se muestra una vez (`transfers.fixSeen`) solo a equipos rotos.
+- **Ventana de gracia para nuevos** (`GDT_NEW_TEAM_DEADLINE`, ~24hs): quien no tiene equipo (`gdtGraceNewTeam()`) puede armarlo aunque el torneo ya empezó.
+- **Anti-trampa**: al editar fuera de 'pre' (arreglo o gracia) NO se pueden AGREGAR jugadores de selecciones que ya jugaron (`gdtNacionesJugaron()`: partido con kickoff pasado o con resultado). Se bloquea en el pool (gris + "ya jugó 🔒"), en `toggleGDTPlayer` y al guardar. Los que ya estaban en el equipo (en `_gdtBaseline`) se pueden mantener.
 
 ## Seguridad (Supabase RLS)
 
