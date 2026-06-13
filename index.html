@@ -1631,9 +1631,9 @@ async function onUserReady(user) {
   maybeShowFixWelcome();
 }
 
-// Bienvenida "HOLA MAÑERO": una sola vez, a quien ya tiene equipo y cambios de arreglo
+// Bienvenida "HOLA MAÑERO": una sola vez, SOLO a quien tiene el equipo roto
 function maybeShowFixWelcome() {
-  if (!_gdtHasTeam || _gdtTransfers.fixSeen || _gdtTransfers.fix <= 0) return;
+  if (!_gdtFixEligible || _gdtTransfers.fixSeen) return;
   document.getElementById('fix-welcome-modal').style.display = 'flex';
 }
 async function dismissFixWelcome(goEdit) {
@@ -4043,30 +4043,36 @@ let _gdtBench     = [];
 let _gdtCaptainId = null;
 let _gdtBaseline  = new Set();   // roster guardado, para contar cambios de arreglo
 let _gdtHasTeam   = false;
+let _gdtFixEligible = false;     // true solo si el equipo guardado estaba roto (incompleto/sin fichas)
 let _gdtBenchPos  = { GK: null, DEF: null, MED: null, DEL: null };
 let _gdtPosFilter = 'all';
 let _gdtMatchStats = null;
 let _gdtAllTeams   = null;
 const GDT_SWAPS_PER_WINDOW = 3;
-const GDT_FIX_CHANGES = 6;   // cambios de arreglo por única vez (equipos viejos sin fichas)
-let _gdtTransfers  = { j2: 0, j3: 0, fix: GDT_FIX_CHANGES, fixSeen: false };
+const GDT_FIX_CHANGES = 6;   // tope de cambios para arreglar un equipo roto (por única vez)
+let _gdtTransfers  = { j2: 0, j3: 0, fixSeen: false };
 // Normaliza el formato guardado (versión vieja: {j2_used:bool}; nueva: {j2:contador})
 function gdtNormalizeTransfers(t) {
-  if (!t) return { j2: 0, j3: 0, fix: GDT_FIX_CHANGES, fixSeen: false };
+  if (!t) return { j2: 0, j3: 0, fixSeen: false };
   return {
     j2: typeof t.j2 === 'number' ? t.j2 : (t.j2_used ? 1 : 0),
     j3: typeof t.j3 === 'number' ? t.j3 : (t.j3_used ? 1 : 0),
-    fix: typeof t.fix === 'number' ? t.fix : GDT_FIX_CHANGES,
     fixSeen: !!t.fixSeen,
   };
 }
 
+// Un equipo está "roto" si no cumple la formación o se pasó de fichas.
+// SOLO estos equipos reciben el arreglo por única vez (los válidos no).
+function gdtTeamRoto() {
+  return _gdtLineup.length !== GDT_SQUAD_SIZE || _gdtBench.length !== GDT_BENCH_SIZE || gdtBudgetUsed() > GDT_BUDGET;
+}
 // Cuántos jugadores del equipo actual no estaban en el equipo guardado (cambios de arreglo)
 function gdtFixChanges() {
   let n = 0;
   for (const id of [..._gdtLineup, ..._gdtBench]) if (!_gdtBaseline.has(id)) n++;
   return n;
 }
+function gdtFixRestantes() { return GDT_FIX_CHANGES - gdtFixChanges(); }
 let _gdtSwapMode   = false;
 let _gdtSwapOut    = null;
 
@@ -4133,14 +4139,9 @@ function renderTransferStatus() {
     el.innerHTML = `<span class="tw-badge tw-free">🆓 Edición libre — el torneo no comenzó</span>`;
     return;
   }
-  // Cambios de arreglo (por única vez): edición libre hasta gastarlos
-  if (_gdtTransfers.fix > 0) {
-    el.innerHTML = `<span class="tw-badge" style="background:rgba(201,170,113,0.18);color:var(--secondary);border:1px solid rgba(201,170,113,0.5)">🎁 Tenés ${_gdtTransfers.fix} cambio(s) de arreglo por única vez — editá libremente y tocá "Guardar equipo"</span>`;
-    return;
-  }
-  // Equipos que quedaron incompletos: se permite completarlos aunque la ventana esté cerrada
-  if (gdtIncomplete()) {
-    el.innerHTML = `<span class="tw-badge" style="background:rgba(255,193,7,0.15);color:#ffc107;border:1px solid rgba(255,193,7,0.4)">⚠️ Equipo incompleto — completá ${GDT_SQUAD_SIZE} titulares + ${GDT_BENCH_SIZE} suplentes y tocá "Guardar equipo"</span>`;
+  // Arreglo por única vez: solo para equipos rotos (incompletos / sin fichas)
+  if (_gdtFixEligible) {
+    el.innerHTML = `<span class="tw-badge" style="background:rgba(201,170,113,0.18);color:var(--secondary);border:1px solid rgba(201,170,113,0.5)">🎁 Tu equipo quedó roto — acomodalo (${GDT_SQUAD_SIZE} titulares + ${GDT_BENCH_SIZE} suplentes, hasta 1200 fichas) y tocá "Guardar". Te quedan ${gdtFixRestantes()} cambios.</span>`;
     return;
   }
   if (win === 'locked') {
@@ -4236,6 +4237,8 @@ async function loadGDTData() {
   }
   // Roster guardado de referencia, para contar los cambios de arreglo
   _gdtBaseline = new Set([..._gdtLineup, ..._gdtBench]);
+  // Solo los equipos guardados que están ROTOS reciben el arreglo por única vez
+  _gdtFixEligible = _gdtHasTeam && gdtTeamRoto();
   _gdtMatchStats = {};
   for (const s of (statsRes.data || [])) {
     if (!_gdtMatchStats[s.match_id]) _gdtMatchStats[s.match_id] = [];
@@ -4591,15 +4594,12 @@ function toggleGDTPlayer(id) {
   const starterIdx = _gdtLineup.indexOf(id);
   const benchIdx   = _gdtBench.indexOf(id);
   const yaEsta = starterIdx !== -1 || benchIdx !== -1;
-  // Fuera de 'pre': se permite editar libre si quedan cambios de arreglo;
-  // si no, solo COMPLETAR un equipo incompleto (agregar, nunca sacar).
+  // Fuera de 'pre': solo los equipos rotos pueden editar libre (arreglo único, tope 6)
   if (win !== 'pre') {
-    if (_gdtTransfers.fix > 0) {
-      // modo arreglo: edición libre (se cuenta y limita al guardar)
-    } else if (gdtIncomplete()) {
-      if (yaEsta) { showToast('⚠️ Solo podés agregar jugadores para completar tu equipo (11+4), no sacar'); return; }
-    } else {
-      showToast(win === 'locked' ? '🔒 Equipo bloqueado' : '⚠️ Usá "Realizar cambio" para modificar el equipo'); return;
+    if (!_gdtFixEligible) { showToast(win === 'locked' ? '🔒 Equipo bloqueado' : '⚠️ Usá "Realizar cambio" para modificar el equipo'); return; }
+    // Agregar un jugador nuevo cuando ya se llegó al tope de cambios → bloquear
+    if (!yaEsta && !_gdtBaseline.has(id) && gdtFixChanges() >= GDT_FIX_CHANGES) {
+      showToast(`⚠️ Llegaste a los ${GDT_FIX_CHANGES} cambios de arreglo`); return;
     }
   }
   if (starterIdx !== -1) {
@@ -4620,7 +4620,7 @@ function toggleGDTPlayer(id) {
 }
 
 function removeGDTPlayer(id, fromBench = false) {
-  if (getTransferWindow() !== 'pre' && _gdtTransfers.fix <= 0) { showToast('⚠️ No podés sacar jugadores ahora — usá "Realizar cambio"'); return; }
+  if (getTransferWindow() !== 'pre' && !_gdtFixEligible) { showToast('⚠️ No podés sacar jugadores ahora — usá "Realizar cambio"'); return; }
   if (fromBench) {
     const idx = _gdtBench.indexOf(id);
     if (idx !== -1) _gdtBench.splice(idx, 1);
@@ -4643,30 +4643,27 @@ async function saveGDTTeam() {
   // En 'pre' se guarda libremente. Fuera de 'pre' solo se permite guardar para
   // dejar el equipo completo y válido (los cambios normales van por "Realizar cambio").
   if (errors.length) { showToast('⚠️ ' + errors[0]); return; }
-  // Fuera de 'pre' con cambios de arreglo disponibles: contar y limitar a los que quedan
-  let consumio = 0;
-  if (win !== 'pre' && _gdtTransfers.fix > 0) {
-    consumio = gdtFixChanges();
-    if (consumio > _gdtTransfers.fix) {
-      showToast(`⚠️ Te quedan ${_gdtTransfers.fix} cambios de arreglo y estás haciendo ${consumio}. Sacá alguno y volvé a guardar.`);
+  // Arreglo por única vez: tope de cambios para equipos rotos
+  if (win !== 'pre' && _gdtFixEligible) {
+    const changes = gdtFixChanges();
+    if (changes > GDT_FIX_CHANGES) {
+      showToast(`⚠️ Máximo ${GDT_FIX_CHANGES} cambios de arreglo (hiciste ${changes}). Sacá alguno y volvé a guardar.`);
       return;
     }
   }
-  const transfersToSave = { ..._gdtTransfers, fix: Math.max(_gdtTransfers.fix - consumio, 0) };
   const { error } = await sb.from('gdt_user_teams').upsert({
     user_id: currentUser.id, lineup: _gdtLineup, bench: _gdtBench,
     captain_id: _gdtCaptainId, presupuesto_usado: gdtBudgetUsed(),
-    transfers: transfersToSave, updated_at: new Date().toISOString(),
+    transfers: _gdtTransfers, updated_at: new Date().toISOString(),
   }, { onConflict: 'user_id' });
   if (error) { showToast('❌ Error: ' + error.message); return; }
-  _gdtTransfers = transfersToSave;
-  _gdtBaseline  = new Set([..._gdtLineup, ..._gdtBench]);  // nuevo punto de referencia
-  _gdtHasTeam   = true;
+  _gdtBaseline    = new Set([..._gdtLineup, ..._gdtBench]);  // nuevo punto de referencia
+  _gdtHasTeam     = true;
+  _gdtFixEligible = gdtTeamRoto();   // si quedó válido, se acabó el arreglo
   if (!_gdtAllTeams) _gdtAllTeams = {};
   _gdtAllTeams[currentUser.id] = { lineup: _gdtLineup, bench: _gdtBench, captain_id: _gdtCaptainId };
   renderGDTBudget();
-  if (consumio > 0) showToast(`✅ Equipo guardado — usaste ${consumio} cambio(s) de arreglo, te quedan ${_gdtTransfers.fix}`);
-  else showToast('✅ Equipo Gran DT guardado');
+  showToast('✅ Equipo Gran DT guardado');
 }
 
 // ============================================================
