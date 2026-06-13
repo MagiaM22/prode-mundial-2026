@@ -692,6 +692,9 @@
       background: var(--dark3); border: 1px solid var(--border);
       border-radius: 8px; padding: 0.85rem 1rem; margin-bottom: 0.6rem;
     }
+    .gdt-admin-match summary::-webkit-details-marker { display: none; }
+    .gdt-admin-match summary > div:first-child > span:first-child { display: inline-block; transition: transform 0.15s; }
+    .gdt-admin-match[open] summary > div:first-child > span:first-child { transform: rotate(90deg); }
     .gdt-stat-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 0.5rem; }
     .gdt-stat-table th { text-align: center; padding: 0.3rem 0.35rem; color: var(--text-muted); font-size: 0.68rem; border-bottom: 1px solid var(--border); }
     .gdt-stat-table td { text-align: center; padding: 0.28rem 0.35rem; border-bottom: 1px solid rgba(48,54,61,0.3); }
@@ -4745,35 +4748,52 @@ function renderGDTAdminStats() {
     return;
   }
 
+  // slug → jugador GDT, para calcular el puntaje de cada fila
+  const slugIndex = {};
+  for (const p of GDT_PLAYERS) slugIndex[gdtSlug(p.nombre)] = p;
+
   container.innerHTML = matchesWithResults.map(m => {
     const stats  = _gdtMatchStats?.[m.id] || [];
     const synced = stats.length > 0;
-    const rows   = stats.map(s => `<tr>
+
+    // Puntaje GDT por jugador y orden de mayor a menor
+    const conPts = stats.map(s => {
+      const p = slugIndex[s.player_slug];
+      const pts = p ? calcGDTMatchPoints(p.id, m.id, null) : null;
+      return { s, pts };
+    }).sort((a, b) => (b.pts ?? -99) - (a.pts ?? -99));
+
+    const rows = conPts.map(({ s, pts }) => `<tr>
       <td>${esc(s.player_name)}</td><td>${esc(s.team)}</td>
       <td>${s.goals}</td><td>${s.assists}</td>
       <td>${s.yellow_cards}</td><td>${s.red_cards}</td>
       <td>${s.own_goals}</td>
       <td>${s.minutes_played >= 60 ? '✅' : s.minutes_played > 0 ? s.minutes_played+"'" : '—'}</td>
-      <td>${s.rating != null ? `<strong>${s.rating}</strong>` : '—'}</td>
+      <td>${s.rating != null ? s.rating : '—'}</td>
       <td>${s.is_mvp ? '★' : ''}</td>
+      <td style="text-align:center;font-weight:800;color:var(--secondary)">${pts != null ? pts : '—'}</td>
     </tr>`).join('');
 
-    return `<div class="gdt-admin-match">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;margin-bottom:${synced?'0.6rem':'0'}">
+    const tabla = synced ? `<table class="gdt-stat-table">
+        <thead><tr><th style="text-align:left">Jugador</th><th style="text-align:left">Selección</th>
+        <th>⚽</th><th>🅰</th><th>🟨</th><th>🟥</th><th>AG</th><th>⏱</th><th>Nota</th><th>★</th><th>Pts</th></tr></thead>
+        <tbody>${rows}</tbody></table>`
+      : '<div style="font-size:0.8rem;color:var(--text-muted);padding:0.4rem 0">Sin estadísticas sincronizadas — tocá "Sync stats".</div>';
+
+    return `<details class="gdt-admin-match" ${synced ? '' : 'open'}>
+      <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem">
         <div>
+          <span style="color:var(--text-muted);font-size:0.85rem;margin-right:0.4rem">▸</span>
           <span class="mcm-group" style="margin-right:0.5rem">${m.flag} ${m.grupo}</span>
           <strong>${esc(m.home)}</strong> ${m.res.local}–${m.res.visit} <strong>${esc(m.away)}</strong>
         </div>
         <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
-          ${synced ? `<span style="color:var(--success);font-size:0.78rem">✅ ${stats.length} jugadores</span>` : ''}
-          <button class="sofascore-btn" onclick="syncGDTStats('${m.id}')">📡 Sync stats</button>
+          ${synced ? `<span style="color:var(--success);font-size:0.78rem">✅ ${stats.length} jug.</span>` : '<span style="color:var(--warning);font-size:0.78rem">sin stats</span>'}
+          <button class="sofascore-btn" onclick="event.preventDefault();event.stopPropagation();syncGDTStats('${m.id}')">📡 Sync stats</button>
         </div>
-      </div>
-      ${synced ? `<table class="gdt-stat-table">
-        <thead><tr><th style="text-align:left">Jugador</th><th style="text-align:left">Selección</th>
-        <th>⚽</th><th>🅰</th><th>🟨</th><th>🟥</th><th>AG</th><th>⏱</th><th>Nota</th><th>★</th></tr></thead>
-        <tbody>${rows}</tbody></table>` : '<div style="font-size:0.8rem;color:var(--text-muted);padding:0.2rem 0">Sin estadísticas sincronizadas</div>'}
-    </div>`;
+      </summary>
+      <div style="margin-top:0.6rem">${tabla}</div>
+    </details>`;
   }).join('');
 }
 
