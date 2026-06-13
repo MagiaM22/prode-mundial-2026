@@ -19,3 +19,5 @@ jobs:
         with:
           node-version: '20'
       - run: node scripts/sync.cjs
+        env:
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
