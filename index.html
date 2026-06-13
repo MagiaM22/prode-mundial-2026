@@ -4087,6 +4087,11 @@ function renderTransferStatus() {
     el.innerHTML = `<span class="tw-badge tw-free">🆓 Edición libre — el torneo no comenzó</span>`;
     return;
   }
+  // Equipos que quedaron incompletos: se permite completarlos aunque la ventana esté cerrada
+  if (gdtIncomplete()) {
+    el.innerHTML = `<span class="tw-badge" style="background:rgba(255,193,7,0.15);color:#ffc107;border:1px solid rgba(255,193,7,0.4)">⚠️ Equipo incompleto — completá ${GDT_SQUAD_SIZE} titulares + ${GDT_BENCH_SIZE} suplentes y tocá "Guardar equipo"</span>`;
+    return;
+  }
   if (win === 'locked') {
     el.innerHTML = `<span class="tw-badge tw-locked">🔒 J3 en curso — equipo bloqueado</span>`;
     return;
@@ -4520,12 +4525,21 @@ function hideGDTRules() {
   document.getElementById('gdt-rules-modal').style.display = 'none';
 }
 
+// Equipo que todavía no llegó a 11 titulares + 4 suplentes
+function gdtIncomplete() {
+  return _gdtLineup.length < GDT_SQUAD_SIZE || _gdtBench.length < GDT_BENCH_SIZE;
+}
+
 function toggleGDTPlayer(id) {
   const win = getTransferWindow();
-  if (win === 'locked') { showToast('🔒 Equipo bloqueado'); return; }
-  if (win !== 'pre')    { showToast('⚠️ Usá "Realizar cambio" para modificar el equipo'); return; }
   const starterIdx = _gdtLineup.indexOf(id);
   const benchIdx   = _gdtBench.indexOf(id);
+  const yaEsta = starterIdx !== -1 || benchIdx !== -1;
+  // Fuera de la edición libre solo se permite COMPLETAR un equipo incompleto (agregar, nunca sacar)
+  if (win !== 'pre') {
+    if (!gdtIncomplete()) { showToast(win === 'locked' ? '🔒 Equipo bloqueado' : '⚠️ Usá "Realizar cambio" para modificar el equipo'); return; }
+    if (yaEsta) { showToast('⚠️ Solo podés agregar jugadores para completar tu equipo (11+4), no sacar'); return; }
+  }
   if (starterIdx !== -1) {
     _gdtLineup.splice(starterIdx, 1);
     if (_gdtCaptainId === id) _gdtCaptainId = null;
@@ -4544,6 +4558,7 @@ function toggleGDTPlayer(id) {
 }
 
 function removeGDTPlayer(id, fromBench = false) {
+  if (getTransferWindow() !== 'pre') { showToast('⚠️ No podés sacar jugadores ahora — usá "Realizar cambio"'); return; }
   if (fromBench) {
     const idx = _gdtBench.indexOf(id);
     if (idx !== -1) _gdtBench.splice(idx, 1);
@@ -4562,9 +4577,9 @@ function setGDTCaptain(id) {
 
 async function saveGDTTeam() {
   const win = getTransferWindow();
-  if (win === 'locked') { showToast('🔒 J3 en curso — equipo bloqueado'); return; }
-  if (win !== 'pre')    { showToast('⚠️ El torneo ya empezó — usá "Realizar cambio"'); return; }
   const errors = gdtValidate();
+  // En 'pre' se guarda libremente. Fuera de 'pre' solo se permite guardar para
+  // dejar el equipo completo y válido (los cambios normales van por "Realizar cambio").
   if (errors.length) { showToast('⚠️ ' + errors[0]); return; }
   const { error } = await sb.from('gdt_user_teams').upsert({
     user_id: currentUser.id, lineup: _gdtLineup, bench: _gdtBench,
