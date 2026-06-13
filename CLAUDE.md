@@ -59,6 +59,7 @@ En el panel de **Supabase → Authentication → URL Configuration**:
 
 - `.github/workflows/sync.yml` corre `scripts/sync.cjs` **cada 20 min en los servidores de GitHub** (sin PC ni API key): resultados + stats desde ESPN, notas desde FotMob, escribe en Supabase con la `SUPABASE_KEY` publishable (RLS abierta). El script **extrae las mismas funciones de index.html** (no duplica lógica); si cambiás `buildStatsFromESPN`/`mergeFotmobRatings`/`FIXTURE`/`TEAM_API_MAP`, el cron usa la versión nueva sola. Probar local: `DRY_RUN=1 node scripts/sync.cjs`.
 - Salta partidos que ya tienen notas (idempotente y liviano). El sync manual desde localhost (botón Sync stats / football-data) sigue funcionando en paralelo.
+- **Permisos Supabase**: `gdt_match_stats` es escribible con la key anon (publishable) → el cron sincroniza stats+notas sin secret. `results` tiene RLS admin-only → el cron solo escribe resultados si está el secret `SUPABASE_SERVICE_KEY` en el workflow (`CAN_RESULTS`); sin él, los resultados se cargan desde localhost (football-data) como siempre. ⚠️ Nota de seguridad: con anon se puede escribir/borrar `gdt_match_stats` (riesgo de vandalismo, aceptado para juego entre amigos).
 - ⚠️ Riesgo conocido: FotMob podría bloquear las IPs de GitHub Actions (datacenter). Si pasa, resultados y stats igual entran; las notas quedan para el sync desde localhost. Verificar en la pestaña Actions del repo.
 
 ## Publicación

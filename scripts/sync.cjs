@@ -27,7 +27,12 @@ const src = [
 // const dentro de eval no sale al scope exterior; pasarlas a var sí.
 eval(src.replace(/\bconst (FIXTURE|TEAM_API_MAP|ESPN_API|FOTMOB_API|SUPABASE_URL|SUPABASE_KEY)\b/g, 'var $1'));
 
-const SB = SUPABASE_URL, KEY = SUPABASE_KEY;
+const SB = SUPABASE_URL;
+// stats/notas se escriben con la key publishable (anon). 'results' tiene RLS de admin:
+// solo se sincroniza si hay SUPABASE_SERVICE_KEY (secret opcional en el workflow).
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
+const KEY = SERVICE_KEY || SUPABASE_KEY;
+const CAN_RESULTS = !!SERVICE_KEY;
 const DRY  = process.env.DRY_RUN === '1';
 const DAYS = parseInt(process.env.DAYS || '4', 10);
 const sbHeaders = { apikey: KEY, Authorization: `Bearer ${KEY}` };
@@ -62,7 +67,7 @@ const ymd = d => d.toISOString().slice(0, 10).replace(/-/g, '');
   const now  = new Date();
   const from = new Date(now.getTime() - DAYS * 86400000);
   const url  = `${ESPN_API}/scoreboard?dates=${ymd(from)}-${ymd(now)}`;
-  console.log(`[sync] ${DRY ? '(DRY) ' : ''}ventana ${ymd(from)}-${ymd(now)}`);
+  console.log(`[sync] ${DRY ? '(DRY) ' : ''}ventana ${ymd(from)}-${ymd(now)} · resultados:${CAN_RESULTS ? 'ON' : 'OFF (sin service key)'}`);
 
   const data     = await (await fetch(url)).json();
   const finished = (data.events || []).filter(e => e.status?.type?.name === 'STATUS_FULL_TIME');
@@ -79,9 +84,9 @@ const ymd = d => d.toISOString().slice(0, 10).replace(/-/g, '');
     const matchId = fixtureMatchId(homeES, awayES);
     if (!matchId) { console.log(`  ⚠️ sin mapear: ${homeES} vs ${awayES}`); continue; }
 
-    // Resultado (desde ESPN)
+    // Resultado (desde ESPN) — solo con service key (la tabla results es admin-only)
     const gl = Number(home.score), gv = Number(away.score);
-    if (Number.isFinite(gl) && Number.isFinite(gv)) {
+    if (CAN_RESULTS && Number.isFinite(gl) && Number.isFinite(gv)) {
       const r = await sbUpsert('results', [{ match_id: matchId, goals_local: gl, goals_visit: gv, updated_at: now.toISOString() }], 'match_id');
       if (r.ok) res++; else console.log(`  ❌ result ${matchId}: ${r.status} ${r.body}`);
     }
