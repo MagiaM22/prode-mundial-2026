@@ -1005,6 +1005,10 @@
         </div>
       </div>
     </div>
+
+    <!-- Mucho scroll vacío y, al fondo del todo, un saludo para los curiosos -->
+    <div style="height:75vh"></div>
+    <div style="text-align:center;color:rgba(255,255,255,0.1);font-size:1.5rem;font-weight:900;letter-spacing:1px;padding:2rem 1rem 5rem;user-select:none">AQUI SE CULIAN A LOS CURIOSOS</div>
   </div>
 
   <!-- TABLA -->
@@ -2621,10 +2625,14 @@ function updateTournamentChip() {
 
 async function setActiveTournament(t) {
   activeTournament = t;
-  if (currentUser) localStorage.setItem('prode_tournament_' + currentUser.id, t.id);
+  if (currentUser) {
+    localStorage.setItem('prode_tournament_' + currentUser.id, t.id);
+    // Asegurar membresía (seguís jugando todos, nunca te baja de ninguno)
+    try { await sb.from('tournament_members').upsert({ tournament_id: t.id, user_id: currentUser.id }, { onConflict: 'tournament_id,user_id' }); } catch (e) {}
+  }
   updateTournamentChip();
   await Promise.all([loadPredictions(), loadParticipants()]);
-  showToast(`🏆 Torneo activo: ${t.name}`);
+  showToast(`👁️ Viendo: ${t.name} (seguís jugando todos tus torneos)`);
   renderTorneos();
 }
 
@@ -2699,14 +2707,15 @@ function renderTorneos() {
     container.innerHTML = `<div class="empty-state"><div class="icon">🏆</div><h3>No hay torneos</h3><p>Creá el primero arriba.</p></div>`;
     return;
   }
-  container.innerHTML = `<div class="torneo-grid">${tournaments.map(t => {
+  const nota = `<div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.7rem">🎮 Jugás <b>todos</b> tus torneos a la vez. "Ver" solo cambia cuál estás mirando ahora — no te baja de ninguno.</div>`;
+  container.innerHTML = nota + `<div class="torneo-grid">${tournaments.map(t => {
     const isActive = t.id === activeTournament.id;
     const canDelete = !t.is_default && (t.created_by === currentUser?.id || isAdmin);
     return `
     <div class="torneo-card ${isActive ? 'active-torneo' : ''}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem">
         <div class="torneo-card-name">🏆 ${esc(t.name)}</div>
-        ${isActive ? '<span class="torneo-active-badge">✓ Activo</span>' : ''}
+        ${isActive ? '<span class="torneo-active-badge">👁️ Viendo</span>' : '<span style="font-size:0.72rem;color:var(--success);white-space:nowrap">✓ Jugando</span>'}
       </div>
       ${t.description ? `<div class="torneo-card-desc">${esc(t.description)}</div>` : ''}
       <div class="torneo-card-meta">
@@ -2719,7 +2728,7 @@ function renderTorneos() {
         <button class="btn btn-ghost btn-sm" onclick="copyInviteLink('${t.invite_code}')">📋 Copiar link</button>
       </div>` : ''}
       <div class="flex-gap" style="margin-top:0.25rem">
-        ${!isActive ? `<button class="btn btn-gold btn-sm" onclick="setActiveTournament(${JSON.stringify(t).replace(/"/g,'&quot;')})">Activar</button>` : `<span style="font-size:0.78rem;color:var(--success)">✓ Estás jugando este torneo</span>`}
+        ${!isActive ? `<button class="btn btn-gold btn-sm" onclick="setActiveTournament(${JSON.stringify(t).replace(/"/g,'&quot;')})">👁️ Ver este torneo</button>` : `<span style="font-size:0.78rem;color:var(--success)">👁️ Lo estás viendo ahora</span>`}
         ${canDelete ? `<button class="btn btn-danger btn-sm" onclick="deleteTorneo('${t.id}')">Eliminar</button>` : ''}
       </div>
     </div>`;
