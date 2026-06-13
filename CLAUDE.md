@@ -55,6 +55,12 @@ En el panel de **Supabase → Authentication → URL Configuration**:
 > El link del mail apunta a `localhost`, así que hay que abrir el mail **en la misma compu** donde corre el server.
 > Mientras esto no esté configurado, para resetear una clave: Supabase → Authentication → Users → buscar el email → "Send password recovery" / setear clave nueva.
 
+## Sincronización automática (GitHub Actions)
+
+- `.github/workflows/sync.yml` corre `scripts/sync.cjs` **cada 20 min en los servidores de GitHub** (sin PC ni API key): resultados + stats desde ESPN, notas desde FotMob, escribe en Supabase con la `SUPABASE_KEY` publishable (RLS abierta). El script **extrae las mismas funciones de index.html** (no duplica lógica); si cambiás `buildStatsFromESPN`/`mergeFotmobRatings`/`FIXTURE`/`TEAM_API_MAP`, el cron usa la versión nueva sola. Probar local: `DRY_RUN=1 node scripts/sync.cjs`.
+- Salta partidos que ya tienen notas (idempotente y liviano). El sync manual desde localhost (botón Sync stats / football-data) sigue funcionando en paralelo.
+- ⚠️ Riesgo conocido: FotMob podría bloquear las IPs de GitHub Actions (datacenter). Si pasa, resultados y stats igual entran; las notas quedan para el sync desde localhost. Verificar en la pestaña Actions del repo.
+
 ## Publicación
 
 - **Hosting: GitHub Pages** (Settings → Pages → Deploy from a branch → `main` / root) → `https://magiam22.github.io/prode-mundial-2026/`. Se redeploya solo con cada push a `main`.
