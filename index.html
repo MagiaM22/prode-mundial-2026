@@ -964,7 +964,7 @@
   <button class="nav-btn" onclick="showSection('fixture', this)">📅 Fixture</button>
   <button class="nav-btn" onclick="showSection('clasificacion', this)">📊 Clasificación</button>
   <button class="nav-btn" onclick="showSection('torneos', this)">🏆 Torneos</button>
-  <button class="nav-btn" onclick="showSection('grandt', this)">⚽ Gran DT</button>
+  <button class="nav-btn" id="nav-grandt" onclick="showSection('grandt', this)">⚽ Gran DT</button>
   <button class="nav-btn" id="nav-resultados" style="display:none" onclick="showSection('resultados', this)">⚽ Resultados <span class="admin-badge">ADMIN</span></button>
 </nav>
 
@@ -1304,6 +1304,24 @@
   </div>
 </div>
 
+<!-- Modal de bienvenida: cambios de arreglo por única vez -->
+<div id="fix-welcome-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:3000;align-items:center;justify-content:center;padding:1rem">
+  <div style="background:linear-gradient(160deg,#1f2530,#15181f);border:2px solid var(--secondary);border-radius:16px;max-width:460px;width:100%;padding:1.6rem;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,0.6)">
+    <div style="font-size:2.6rem;margin-bottom:0.3rem">👋⚽</div>
+    <h2 style="margin:0 0 0.6rem;color:var(--secondary);font-size:1.5rem">¡HOLA MAÑERO!</h2>
+    <p style="font-size:0.92rem;color:var(--text);line-height:1.55;margin:0 0 0.8rem">
+      Ajustamos el <b>Gran DT</b>: ahora la <b>nota del partido</b> suma puntos y se sumaron mejoras.
+      Con los cambios, varios equipos quedaron <b>incompletos o sin fichas</b>.
+    </p>
+    <p style="font-size:0.92rem;color:var(--text);line-height:1.55;margin:0 0 1.1rem">
+      Por eso te damos <b style="color:var(--secondary)">6 cambios por única vez</b> para que acomodes tu equipo
+      (11 titulares + 4 suplentes, dentro de las 1200 fichas). ¡Andá a editarlo!
+    </p>
+    <button class="btn btn-gold" style="width:100%;font-size:1rem;padding:0.7rem" onclick="dismissFixWelcome(true)">⚽ Ir a editar mi equipo</button>
+    <button class="btn btn-ghost btn-sm" style="margin-top:0.6rem" onclick="dismissFixWelcome(false)">Después lo hago</button>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -1610,6 +1628,22 @@ async function onUserReady(user) {
 
   updateTournamentChip();
   renderHome();
+  maybeShowFixWelcome();
+}
+
+// Bienvenida "HOLA MAÑERO": una sola vez, a quien ya tiene equipo y cambios de arreglo
+function maybeShowFixWelcome() {
+  if (!_gdtHasTeam || _gdtTransfers.fixSeen || _gdtTransfers.fix <= 0) return;
+  document.getElementById('fix-welcome-modal').style.display = 'flex';
+}
+async function dismissFixWelcome(goEdit) {
+  document.getElementById('fix-welcome-modal').style.display = 'none';
+  _gdtTransfers.fixSeen = true;
+  try { await sb.from('gdt_user_teams').update({ transfers: _gdtTransfers }).eq('user_id', currentUser.id); } catch (e) {}
+  if (goEdit) {
+    showSection('grandt', document.getElementById('nav-grandt'));
+    showGDTTab('equipo', document.getElementById('gdttab-equipo'));
+  }
 }
 
 function switchTab(tab) {
@@ -4007,19 +4041,31 @@ const GDT_PLAYERS = [
 let _gdtLineup    = [];
 let _gdtBench     = [];
 let _gdtCaptainId = null;
+let _gdtBaseline  = new Set();   // roster guardado, para contar cambios de arreglo
+let _gdtHasTeam   = false;
 let _gdtBenchPos  = { GK: null, DEF: null, MED: null, DEL: null };
 let _gdtPosFilter = 'all';
 let _gdtMatchStats = null;
 let _gdtAllTeams   = null;
 const GDT_SWAPS_PER_WINDOW = 3;
-let _gdtTransfers  = { j2: 0, j3: 0 };
+const GDT_FIX_CHANGES = 6;   // cambios de arreglo por única vez (equipos viejos sin fichas)
+let _gdtTransfers  = { j2: 0, j3: 0, fix: GDT_FIX_CHANGES, fixSeen: false };
 // Normaliza el formato guardado (versión vieja: {j2_used:bool}; nueva: {j2:contador})
 function gdtNormalizeTransfers(t) {
-  if (!t) return { j2: 0, j3: 0 };
+  if (!t) return { j2: 0, j3: 0, fix: GDT_FIX_CHANGES, fixSeen: false };
   return {
     j2: typeof t.j2 === 'number' ? t.j2 : (t.j2_used ? 1 : 0),
     j3: typeof t.j3 === 'number' ? t.j3 : (t.j3_used ? 1 : 0),
+    fix: typeof t.fix === 'number' ? t.fix : GDT_FIX_CHANGES,
+    fixSeen: !!t.fixSeen,
   };
+}
+
+// Cuántos jugadores del equipo actual no estaban en el equipo guardado (cambios de arreglo)
+function gdtFixChanges() {
+  let n = 0;
+  for (const id of [..._gdtLineup, ..._gdtBench]) if (!_gdtBaseline.has(id)) n++;
+  return n;
 }
 let _gdtSwapMode   = false;
 let _gdtSwapOut    = null;
@@ -4085,6 +4131,11 @@ function renderTransferStatus() {
   const win = getTransferWindow();
   if (win === 'pre') {
     el.innerHTML = `<span class="tw-badge tw-free">🆓 Edición libre — el torneo no comenzó</span>`;
+    return;
+  }
+  // Cambios de arreglo (por única vez): edición libre hasta gastarlos
+  if (_gdtTransfers.fix > 0) {
+    el.innerHTML = `<span class="tw-badge" style="background:rgba(201,170,113,0.18);color:var(--secondary);border:1px solid rgba(201,170,113,0.5)">🎁 Tenés ${_gdtTransfers.fix} cambio(s) de arreglo por única vez — editá libremente y tocá "Guardar equipo"</span>`;
     return;
   }
   // Equipos que quedaron incompletos: se permite completarlos aunque la ventana esté cerrada
@@ -4179,7 +4230,12 @@ async function loadGDTData() {
     _gdtBench     = teamRes.data.bench      || [];
     _gdtCaptainId = teamRes.data.captain_id || null;
     _gdtTransfers = gdtNormalizeTransfers(teamRes.data.transfers);
+    _gdtHasTeam   = true;
+  } else {
+    _gdtHasTeam   = false;
   }
+  // Roster guardado de referencia, para contar los cambios de arreglo
+  _gdtBaseline = new Set([..._gdtLineup, ..._gdtBench]);
   _gdtMatchStats = {};
   for (const s of (statsRes.data || [])) {
     if (!_gdtMatchStats[s.match_id]) _gdtMatchStats[s.match_id] = [];
@@ -4535,10 +4591,16 @@ function toggleGDTPlayer(id) {
   const starterIdx = _gdtLineup.indexOf(id);
   const benchIdx   = _gdtBench.indexOf(id);
   const yaEsta = starterIdx !== -1 || benchIdx !== -1;
-  // Fuera de la edición libre solo se permite COMPLETAR un equipo incompleto (agregar, nunca sacar)
+  // Fuera de 'pre': se permite editar libre si quedan cambios de arreglo;
+  // si no, solo COMPLETAR un equipo incompleto (agregar, nunca sacar).
   if (win !== 'pre') {
-    if (!gdtIncomplete()) { showToast(win === 'locked' ? '🔒 Equipo bloqueado' : '⚠️ Usá "Realizar cambio" para modificar el equipo'); return; }
-    if (yaEsta) { showToast('⚠️ Solo podés agregar jugadores para completar tu equipo (11+4), no sacar'); return; }
+    if (_gdtTransfers.fix > 0) {
+      // modo arreglo: edición libre (se cuenta y limita al guardar)
+    } else if (gdtIncomplete()) {
+      if (yaEsta) { showToast('⚠️ Solo podés agregar jugadores para completar tu equipo (11+4), no sacar'); return; }
+    } else {
+      showToast(win === 'locked' ? '🔒 Equipo bloqueado' : '⚠️ Usá "Realizar cambio" para modificar el equipo'); return;
+    }
   }
   if (starterIdx !== -1) {
     _gdtLineup.splice(starterIdx, 1);
@@ -4558,7 +4620,7 @@ function toggleGDTPlayer(id) {
 }
 
 function removeGDTPlayer(id, fromBench = false) {
-  if (getTransferWindow() !== 'pre') { showToast('⚠️ No podés sacar jugadores ahora — usá "Realizar cambio"'); return; }
+  if (getTransferWindow() !== 'pre' && _gdtTransfers.fix <= 0) { showToast('⚠️ No podés sacar jugadores ahora — usá "Realizar cambio"'); return; }
   if (fromBench) {
     const idx = _gdtBench.indexOf(id);
     if (idx !== -1) _gdtBench.splice(idx, 1);
@@ -4581,15 +4643,30 @@ async function saveGDTTeam() {
   // En 'pre' se guarda libremente. Fuera de 'pre' solo se permite guardar para
   // dejar el equipo completo y válido (los cambios normales van por "Realizar cambio").
   if (errors.length) { showToast('⚠️ ' + errors[0]); return; }
+  // Fuera de 'pre' con cambios de arreglo disponibles: contar y limitar a los que quedan
+  let consumio = 0;
+  if (win !== 'pre' && _gdtTransfers.fix > 0) {
+    consumio = gdtFixChanges();
+    if (consumio > _gdtTransfers.fix) {
+      showToast(`⚠️ Te quedan ${_gdtTransfers.fix} cambios de arreglo y estás haciendo ${consumio}. Sacá alguno y volvé a guardar.`);
+      return;
+    }
+  }
+  const transfersToSave = { ..._gdtTransfers, fix: Math.max(_gdtTransfers.fix - consumio, 0) };
   const { error } = await sb.from('gdt_user_teams').upsert({
     user_id: currentUser.id, lineup: _gdtLineup, bench: _gdtBench,
     captain_id: _gdtCaptainId, presupuesto_usado: gdtBudgetUsed(),
-    transfers: _gdtTransfers, updated_at: new Date().toISOString(),
+    transfers: transfersToSave, updated_at: new Date().toISOString(),
   }, { onConflict: 'user_id' });
   if (error) { showToast('❌ Error: ' + error.message); return; }
+  _gdtTransfers = transfersToSave;
+  _gdtBaseline  = new Set([..._gdtLineup, ..._gdtBench]);  // nuevo punto de referencia
+  _gdtHasTeam   = true;
   if (!_gdtAllTeams) _gdtAllTeams = {};
   _gdtAllTeams[currentUser.id] = { lineup: _gdtLineup, bench: _gdtBench, captain_id: _gdtCaptainId };
-  showToast('✅ Equipo Gran DT guardado');
+  renderGDTBudget();
+  if (consumio > 0) showToast(`✅ Equipo guardado — usaste ${consumio} cambio(s) de arreglo, te quedan ${_gdtTransfers.fix}`);
+  else showToast('✅ Equipo Gran DT guardado');
 }
 
 // ============================================================

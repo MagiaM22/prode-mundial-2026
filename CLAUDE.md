@@ -36,7 +36,12 @@ Levanta un server local en **http://localhost:8080** y abre el navegador.
 - **Para re-tunear precios:** reaplicar la fórmula **sobre `rating`** (nunca acumular sobre `precio`). Es una pasada idempotente: leer `rating`, recalcular `precio`.
 - Scoring (motor `calcGDTMatchPoints`): **base = nota del partido (1-10, FotMob; 6 de oficio si jugó sin nota)** + eventos `GDT_PTS`: gol GK10/DEF8/MED6/DEL5, valla invicta GK4/DEF3, asist 3, amarilla -1, roja -3, gol en contra -2, MVP +2, minutos +1 (60'+). Capitán ×2 (multiplica todo, nota incluida). Total redondeado a 1 decimal.
 - **Equipo de la Fecha** (pestaña ⭐, visible a todos): mejor 11 por jornada según puntos GDT en **formación fija 4-3-3**; se recalcula de `_gdtMatchStats`. Funciones `calcTeamOfWeek`/`renderTeamOfWeek`.
-- **Cambios**: **3 por ventana** (`GDT_SWAPS_PER_WINDOW`). Ventanas: J2 (de inicio J1 a 30 min antes de J2) y J3; después, bloqueado. Solo titulares. Contador en `gdt_user_teams.transfers` formato `{j2:n, j3:n}` (el viejo `{j2_used:bool}` se normaliza con `gdtNormalizeTransfers`). Guardar equipo exige 11 titulares + 4 suplentes + capitán.
+- **Cambios**: **3 por ventana** (`GDT_SWAPS_PER_WINDOW`). Ventanas: J2 (de inicio J1 a 30 min antes de J2) y J3; después, bloqueado. Solo titulares. Contador en `gdt_user_teams.transfers` formato `{j2:n, j3:n, fix:n, fixSeen:bool}` (el viejo `{j2_used:bool}` se normaliza con `gdtNormalizeTransfers`). Guardar equipo exige 11 titulares + 4 suplentes + capitán.
+- **Arreglo por única vez** (`GDT_FIX_CHANGES=6`): tras los cambios de reglas, equipos viejos quedaron incompletos/sin fichas. `transfers.fix` (default 6) habilita edición libre fuera de ventana hasta gastar 6 cambios (se cuentan al guardar como jugadores nuevos vs `_gdtBaseline`). Modal "HOLA MAÑERO" (`maybeShowFixWelcome`/`dismissFixWelcome`) se muestra una vez (`fixSeen`) a quien ya tiene equipo.
+
+## Seguridad (Supabase RLS)
+
+- `gdt_user_teams` y `results` ya tienen RLS (escritura solo dueño / solo admins). `gdt_match_stats` estaba **abierta a escritura anónima** (la key publishable es pública) → `seguridad.sql` la cierra a admins + service_role. Correr ese SQL **después** de poner el secret `SUPABASE_SERVICE_KEY` en el workflow (si no, el cron deja de escribir). Detalle e instrucciones en `seguridad.sql`.
 
 ### Cómo actualizar la base más adelante
 Convocatorias: prensa / `worldcuppass.com/<pais>-world-cup-squad-2026`.
