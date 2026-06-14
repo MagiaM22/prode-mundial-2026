@@ -19,6 +19,7 @@ const src = [
   ex(/function gdtSlug\(str\) \{[\s\S]*?\n\}/, 'gdtSlug'),
   ex(/const ESPN_API[\s\S]*?async function espnFindEvent\(matchId\) \{[\s\S]*?\n\}/, 'espn'),
   ex(/function buildStatsFromESPN\(summary\) \{[\s\S]*?\n\}/, 'buildStatsFromESPN'),
+  ex(/function dedupeStatsRows\(rows\) \{[\s\S]*?\n\}/, 'dedupeStatsRows'),
   ex(/const FOTMOB_API[\s\S]*?async function mergeFotmobRatings\(matchId, stats\) \{[\s\S]*?\n\}/, 'fotmob'),
   ex(/const SUPABASE_URL\s*=\s*'[^']+';/, 'SUPABASE_URL'),
   ex(/const SUPABASE_KEY\s*=\s*'[^']+';/, 'SUPABASE_KEY'),
@@ -98,12 +99,12 @@ const ymd = d => d.toISOString().slice(0, 10).replace(/-/g, '');
     if (!arr.length) continue;
     let conNotas = false;
     try { conNotas = await mergeFotmobRatings(matchId, arr); } catch (err) { console.log(`  ⚠️ FotMob ${matchId}: ${err.message}`); }
-    const rows = arr.map(s => ({
+    const rows = dedupeStatsRows(arr.map(s => ({
       match_id: matchId, player_name: s.player_name, player_slug: gdtSlug(s.player_name),
       team: s.team, goals: s.goals || 0, assists: s.assists || 0, yellow_cards: s.yellow_cards || 0,
       red_cards: s.red_cards || 0, own_goals: s.own_goals || 0, minutes_played: s.minutes_played || 0,
       is_mvp: s.is_mvp || false, rating: s.rating ?? null, synced_at: now.toISOString(),
-    }));
+    })));
     const up = await sbUpsert('gdt_match_stats', rows, 'match_id,player_slug');
     if (up.ok) { stats++; if (conNotas) notas++; console.log(`  ✅ ${matchId} ${homeES} ${gl}-${gv} ${awayES} — ${rows.length} jug${conNotas ? ', con notas' : ' (sin notas)'}`); }
     else console.log(`  ❌ stats ${matchId}: ${up.status} ${up.body}`);

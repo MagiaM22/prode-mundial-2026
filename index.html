@@ -5093,6 +5093,26 @@ function buildStatsFromESPN(summary) {
   return Object.values(ps);
 }
 
+// Fusiona filas con el mismo (match_id, player_slug) — p.ej. Ederson y Éderson normalizan igual.
+// Necesario porque el upsert de Supabase no acepta dos filas con la misma clave en un mismo comando.
+function dedupeStatsRows(rows) {
+  const by = {};
+  for (const r of rows) {
+    const k = r.match_id + '|' + r.player_slug;
+    const e = by[k];
+    if (!e) { by[k] = { ...r }; continue; }
+    e.goals          += r.goals          || 0;
+    e.assists        += r.assists        || 0;
+    e.yellow_cards   += r.yellow_cards   || 0;
+    e.red_cards      += r.red_cards      || 0;
+    e.own_goals      += r.own_goals      || 0;
+    e.minutes_played  = Math.max(e.minutes_played || 0, r.minutes_played || 0);
+    e.is_mvp          = e.is_mvp || r.is_mvp;
+    if (r.rating != null && (e.rating == null || r.rating > e.rating)) e.rating = r.rating;
+  }
+  return Object.values(by);
+}
+
 // ============================================================
 // GRAN DT — NOTAS DEL PARTIDO (FotMob)
 // ============================================================
@@ -5175,7 +5195,7 @@ async function syncGDTStats(matchId, silent) {
     try { conNotas = await mergeFotmobRatings(matchId, stats); }
     catch(e) { console.warn('FotMob sin datos:', e.message); }
 
-    const toUpsert = stats.map(s => ({
+    const toUpsert = dedupeStatsRows(stats.map(s => ({
       match_id:       matchId,
       player_name:    s.player_name,
       player_slug:    gdtSlug(s.player_name),
@@ -5189,7 +5209,7 @@ async function syncGDTStats(matchId, silent) {
       is_mvp:         s.is_mvp       || false,
       rating:         s.rating       ?? null,
       synced_at:      new Date().toISOString(),
-    }));
+    })));
 
     let { error } = await sb.from('gdt_match_stats')
       .upsert(toUpsert, { onConflict: 'match_id,player_slug' });
