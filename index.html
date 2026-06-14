@@ -5195,7 +5195,7 @@ async function syncGDTStats(matchId, silent) {
     try { conNotas = await mergeFotmobRatings(matchId, stats); }
     catch(e) { console.warn('FotMob sin datos:', e.message); }
 
-    const toUpsert = dedupeStatsRows(stats.map(s => ({
+    let toUpsert = dedupeStatsRows(stats.map(s => ({
       match_id:       matchId,
       player_name:    s.player_name,
       player_slug:    gdtSlug(s.player_name),
@@ -5210,6 +5210,8 @@ async function syncGDTStats(matchId, silent) {
       rating:         s.rating       ?? null,
       synced_at:      new Date().toISOString(),
     })));
+    // Si no se consiguieron notas, NO escribir la columna rating (no pisar las que ya estén)
+    if (!conNotas) toUpsert = toUpsert.map(({ rating, ...r }) => r);
 
     let { error } = await sb.from('gdt_match_stats')
       .upsert(toUpsert, { onConflict: 'match_id,player_slug' });

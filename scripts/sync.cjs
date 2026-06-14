@@ -99,12 +99,14 @@ const ymd = d => d.toISOString().slice(0, 10).replace(/-/g, '');
     if (!arr.length) continue;
     let conNotas = false;
     try { conNotas = await mergeFotmobRatings(matchId, arr); } catch (err) { console.log(`  ⚠️ FotMob ${matchId}: ${err.message}`); }
-    const rows = dedupeStatsRows(arr.map(s => ({
+    let rows = dedupeStatsRows(arr.map(s => ({
       match_id: matchId, player_name: s.player_name, player_slug: gdtSlug(s.player_name),
       team: s.team, goals: s.goals || 0, assists: s.assists || 0, yellow_cards: s.yellow_cards || 0,
       red_cards: s.red_cards || 0, own_goals: s.own_goals || 0, minutes_played: s.minutes_played || 0,
       is_mvp: s.is_mvp || false, rating: s.rating ?? null, synced_at: now.toISOString(),
     })));
+    // Si no se consiguieron notas, NO tocar la columna rating (no pisar las que ya estén)
+    if (!conNotas) rows = rows.map(({ rating, ...r }) => r);
     const up = await sbUpsert('gdt_match_stats', rows, 'match_id,player_slug');
     if (up.ok) { stats++; if (conNotas) notas++; console.log(`  ✅ ${matchId} ${homeES} ${gl}-${gv} ${awayES} — ${rows.length} jug${conNotas ? ', con notas' : ' (sin notas)'}`); }
     else console.log(`  ❌ stats ${matchId}: ${up.status} ${up.body}`);
