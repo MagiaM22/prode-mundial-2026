@@ -836,12 +836,13 @@
       box-shadow: 0 3px 8px rgba(0,0,0,0.5);
       position: relative;
     }
-    .totw-mvp::after {
+    .totw-mvp::after, .totw-cap::after {
       content: '★';
       position: absolute; top: -11px; right: -7px;
       color: #ffc107; font-size: 0.85rem;
       text-shadow: 0 1px 3px rgba(0,0,0,0.8);
     }
+    .totw-cap { box-shadow: 0 0 0 2px #ffc107, 0 3px 8px rgba(0,0,0,0.5); }
     .totw-name {
       font-size: 0.66rem; font-weight: 700; line-height: 1.15;
       color: #fff;
@@ -4064,6 +4065,7 @@ let _gdtBenchPos  = { GK: null, DEF: null, MED: null, DEL: null };
 let _gdtPosFilter = 'all';
 let _gdtMatchStats = null;
 let _gdtAllTeams   = null;
+let _gdtProfiles   = {};   // perfil (nombre/alias) de cada dueño de equipo GDT, global
 const GDT_SWAPS_PER_WINDOW = 3;
 const GDT_FIX_CHANGES = 6;   // tope de cambios para arreglar un equipo roto (por única vez)
 let _gdtTransfers  = { j2: 0, j3: 0, fixSeen: false };
@@ -4285,6 +4287,13 @@ async function loadGDTData() {
   }
   _gdtAllTeams = {};
   for (const t of (allTeamsRes.data || [])) _gdtAllTeams[t.user_id] = t;
+  // Perfiles de TODOS los dueños de equipo (el Gran DT es global, no por torneo)
+  const ownerIds = Object.keys(_gdtAllTeams);
+  if (ownerIds.length) {
+    const { data: profs } = await sb.from('profiles').select('id, nombre, alias').in('id', ownerIds);
+    _gdtProfiles = {};
+    for (const p of (profs || [])) _gdtProfiles[p.id] = p;
+  }
 }
 
 // ============================================================
@@ -4385,29 +4394,40 @@ function renderGDTField() {
     return;
   }
 
-  const byPos = { GK: [], DEF: [], MED: [], DEL: [] };
-  let playerNum = 1;
+  // Puntos acumulados de cada jugador del usuario
+  const score   = currentUser ? calcGDTUserScore(currentUser.id) : { playerPts: [] };
+  const ptsById = {};
+  (score.playerPts || []).forEach(p => { ptsById[p.id] = p.pts; });
 
+  const byPos = { GK: [], DEF: [], MED: [], DEL: [] };
   _gdtLineup.forEach(pid => {
     const p = gdtPlayerById(pid);
     if (!p) return;
-    const playerData = {...p, isCaptain: _gdtCaptainId === pid, num: playerNum++};
+    const playerData = { ...p, isCaptain: _gdtCaptainId === pid, pts: ptsById[pid] ?? 0 };
     if (byPos[p.pos]) byPos[p.pos].push(playerData);
   });
 
+  const totalPts = (score.total ?? 0);
   const fieldHTML = `
     <div class="gdt-field">
       ${GDT_FIELD_SVG}
-      ${gdtFieldLayout(byPos).map(p => `<div class="gdt-field-player ${p.isCaptain ? 'gdt-field-captain' : ''}" style="left:${p.left}%;top:${p.top}%;z-index:10" title="${p.nombre}"><span class="num">${String(p.num).padStart(2,'0')}</span><span class="name">${p.nombre.split(' ').pop().substring(0,6)}</span></div>`).join('')}
+      ${gdtFieldLayout(byPos).map(p => `
+        <div class="totw-player" style="left:${p.left}%;top:${p.top}%" title="${esc(p.nombre)} (${esc(p.seleccion)})${p.isCaptain ? ' — Capitán ×2' : ''} · ${p.pts} pts">
+          <div class="totw-pts ${p.isCaptain ? 'totw-cap' : ''}">${p.pts}</div>
+          <div class="totw-name">${p.flag} ${esc(gdtFieldName(p.nombre))}</div>
+        </div>`).join('')}
     </div>
-    <div style="margin-top:1rem;display:grid;grid-template-columns:repeat(4,1fr);gap:0.5rem;font-size:0.8rem">
-      <div style="padding:0.5rem;background:rgba(255,255,255,0.04);border-radius:6px"><strong>${byPos.GK.length}</strong> GK</div>
-      <div style="padding:0.5rem;background:rgba(255,255,255,0.04);border-radius:6px"><strong>${byPos.DEF.length}</strong> DEF</div>
-      <div style="padding:0.5rem;background:rgba(255,255,255,0.04);border-radius:6px"><strong>${byPos.MED.length}</strong> MED</div>
-      <div style="padding:0.5rem;background:rgba(255,255,255,0.04);border-radius:6px"><strong>${byPos.DEL.length}</strong> DEL</div>
+    <div style="margin-top:0.9rem;text-align:center;font-size:0.85rem;color:var(--text-muted)">
+      Formación ${byPos.DEF.length}-${byPos.MED.length}-${byPos.DEL.length} · <strong style="color:var(--secondary)">${totalPts} pts</strong> · el número en el círculo son los puntos del jugador
     </div>
   `;
   container.innerHTML = fieldHTML;
+}
+
+// Nombre corto y legible para la cancha: inicial + apellido (Lionel Messi → L. Messi)
+function gdtFieldName(nombre) {
+  const t = String(nombre || '').trim().split(/\s+/);
+  return t.length > 1 ? `${t[0][0]}. ${t.slice(1).join(' ')}` : (t[0] || '');
 }
 
 // ── Budget bar ──
@@ -4825,17 +4845,17 @@ function renderGDTLeaderboard() {
   const statsEl      = document.getElementById('gdt-lb-stats');
   if (!container) return;
 
-  const rows = participants.map(p => {
-    const score = calcGDTUserScore(p.id);
-    const team  = _gdtAllTeams?.[p.id];
-    return { ...p, gdtTotal: score.total, hasTeam: !!team, team };
+  // El Gran DT es global: listamos a TODOS los que armaron equipo (no depende del torneo)
+  const rows = Object.keys(_gdtAllTeams || {}).map(uid => {
+    const prof  = _gdtProfiles[uid] || { nombre: 'Jugador', alias: '?' };
+    const score = calcGDTUserScore(uid);
+    return { id: uid, nombre: prof.nombre, alias: prof.alias, gdtTotal: score.total, hasTeam: true, team: _gdtAllTeams[uid] };
   }).sort((a,b) => b.gdtTotal - a.gdtTotal);
 
-  const withTeam = rows.filter(r => r.hasTeam).length;
   const matchesSynced = Object.keys(_gdtMatchStats || {}).length;
-  if (statsEl) statsEl.textContent = `${withTeam}/${participants.length} equipos · ${matchesSynced} partidos con stats`;
+  if (statsEl) statsEl.textContent = `${rows.length} equipos · ${matchesSynced} partidos con stats`;
 
-  if (!rows.length) { container.innerHTML = `<div class="empty-state"><div class="icon">🏆</div><h3>Sin participantes</h3></div>`; return; }
+  if (!rows.length) { container.innerHTML = `<div class="empty-state"><div class="icon">🏆</div><h3>Todavía nadie armó su equipo</h3><p>Andá a "Mi Equipo" y armá el tuyo.</p></div>`; return; }
 
   let html = `<table class="gdt-lb-table"><thead><tr>
     <th style="width:46px">#</th><th>Participante</th>
