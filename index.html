@@ -2279,6 +2279,15 @@ function calcScore(pred, result) {
   return 0;
 }
 
+// Ajustes manuales de puntos para el prode (ej. bonus por VAR 😂). Se suman al total.
+const PRODE_BONUS = [
+  { match: 'rayo', puntos: 6 },   // Rayo Amarillo — 6 por VAR
+];
+function prodeBonus(p) {
+  const txt = gdtSlug(p.nombre || '') + ' ' + gdtSlug(p.alias || '');
+  return PRODE_BONUS.reduce((b, r) => b + (txt.includes(r.match) ? r.puntos : 0), 0);
+}
+
 function calcScores() {
   const participants = _participants || [];
   const results      = _results || {};
@@ -2295,6 +2304,7 @@ function calcScores() {
         if (pts === 3) exact++; else if (pts === 1) partial++;
       }
     }
+    total += prodeBonus(p);
     const predCount = Object.values(myPreds).filter(v => v.local !== undefined && v.visit !== undefined).length;
     return { ...p, total, exact, partial, zero: played - exact - partial, played, predCount };
   }).sort((a, b) => b.total - a.total || b.exact - a.exact || b.partial - a.partial || a.nombre.localeCompare(b.nombre));
@@ -2321,6 +2331,7 @@ function calcGlobalScores() {
         if (pts === 3) exact++; else if (pts === 1) partial++;
       }
     }
+    total += prodeBonus(p);
     const predCount = Object.keys(myPreds).length;
     return { ...p, total, exact, partial, zero: played - exact - partial, played, predCount };
   }).sort((a, b) => b.total - a.total || b.exact - a.exact || b.partial - a.partial || a.nombre.localeCompare(b.nombre));
