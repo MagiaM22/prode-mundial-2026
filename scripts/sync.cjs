@@ -67,8 +67,9 @@ const ymd = d => d.toISOString().slice(0, 10).replace(/-/g, '');
 (async () => {
   const now  = new Date();
   const from = new Date(now.getTime() - DAYS * 86400000);
-  const url  = `${ESPN_API}/scoreboard?dates=${ymd(from)}-${ymd(now)}`;
-  console.log(`[sync] ${DRY ? '(DRY) ' : ''}ventana ${ymd(from)}-${ymd(now)} · resultados:${CAN_RESULTS ? 'ON' : 'OFF (sin service key)'}`);
+  const to   = new Date(now.getTime() + 1 * 86400000);  // +1 día: partidos cuya fecha local va adelantada por UTC/huso
+  const url  = `${ESPN_API}/scoreboard?dates=${ymd(from)}-${ymd(to)}`;
+  console.log(`[sync] ${DRY ? '(DRY) ' : ''}ventana ${ymd(from)}-${ymd(to)} · resultados:${CAN_RESULTS ? 'ON' : 'OFF (sin service key)'}`);
 
   const data     = await (await fetch(url)).json();
   const finished = (data.events || []).filter(e => e.status?.type?.name === 'STATUS_FULL_TIME');
