@@ -1606,22 +1606,23 @@ async function onUserReady(user) {
   const joinCode = new URLSearchParams(window.location.search).get('join');
   if (joinCode) await joinTournamentByCode(joinCode, user);
 
+  // Todos son miembros del torneo principal (evita pronósticos que parecen "no guardados")
+  try { await sb.from('tournament_members').upsert({ tournament_id: DEFAULT_TOURNAMENT_ID, user_id: user.id }, { onConflict: 'tournament_id,user_id' }); } catch (e) {}
+
   // Restaurar torneo guardado ANTES de cargar datos, así todo se carga en el torneo correcto
   const savedId = localStorage.getItem('prode_tournament_' + user.id);
   if (savedId) activeTournament = { ...activeTournament, id: savedId };
 
   await loadAllData();
 
-  // Verificar que el torneo guardado sigue siendo válido (el usuario sigue siendo miembro)
+  // Elegir torneo activo: el guardado si sigue válido; si no, el PRINCIPAL (no uno al azar)
+  const mainT = (_tournaments || []).find(t => t.is_default) || (_tournaments || [])[0];
   if (savedId && _tournaments) {
     const saved = _tournaments.find(t => t.id === savedId);
-    if (saved) {
-      activeTournament = saved;
-    } else {
-      // Ya no es miembro de ese torneo, limpiar y usar el primero disponible
-      localStorage.removeItem('prode_tournament_' + user.id);
-      activeTournament = _tournaments[0] || activeTournament;
-    }
+    if (saved) activeTournament = saved;
+    else { localStorage.removeItem('prode_tournament_' + user.id); if (mainT) activeTournament = mainT; }
+  } else if (mainT) {
+    activeTournament = mainT;
   }
 
   updateTournamentChip();
@@ -1629,29 +1630,21 @@ async function onUserReady(user) {
   maybeShowFixWelcome();
 }
 
-// Bienvenida "HOLA MAÑERO": equipo roto (con 6 cambios) o sin equipo (gracia 24hs)
-let _welcomeForNewTeam = false;
+// Bienvenida: avisa que ahora se puede editar el equipo para la próxima fecha (una vez)
 function maybeShowFixWelcome() {
   const msg = document.getElementById('welcome-msg');
-  if (_gdtFixEligible && !_gdtTransfers.fixSeen) {
-    _welcomeForNewTeam = false;
-    msg.innerHTML = `Ajustamos el <b>Gran DT</b> (ahora la <b>nota del partido</b> suma puntos) y tu equipo quedó
-      <b>incompleto o sin fichas</b>. Te damos <b style="color:var(--secondary)">6 cambios por única vez</b> para acomodarlo
-      (11 titulares + 4 suplentes, hasta 1200 fichas).<br><br>⚠️ No podés sumar jugadores de selecciones que <b>ya jugaron</b>.`;
-    document.getElementById('fix-welcome-modal').style.display = 'flex';
-  } else if (gdtGraceNewTeam()) {
-    _welcomeForNewTeam = true;
-    msg.innerHTML = `Todavía no armaste tu <b>Gran DT</b>. ¡Estás a tiempo! Tenés unas horas para hacerlo.<br><br>
-      ⚠️ Como el Mundial ya arrancó, <b>no podés elegir jugadores de selecciones que ya jugaron</b>. El resto, a full.`;
-    document.getElementById('fix-welcome-modal').style.display = 'flex';
-  }
+  if (!msg || _gdtTransfers.fixSeen) return;
+  const ej = gdtEditJornada();
+  if (ej === null || ej === 1) return;   // solo cuando hay una fecha futura para editar
+  msg.innerHTML = `¡Novedad en el <b>Gran DT</b>! Ahora podés <b style="color:var(--secondary)">cambiar tu equipo para la Fecha ${ej}</b>
+    desde ya. Tus puntos de las fechas anteriores <b>no se tocan</b> — los cambios aplican recién en la Fecha ${ej}.<br><br>
+    Tenés tiempo hasta que empiece la Fecha ${ej}. ¡Andá a acomodarlo!`;
+  document.getElementById('fix-welcome-modal').style.display = 'flex';
 }
 async function dismissFixWelcome(goEdit) {
   document.getElementById('fix-welcome-modal').style.display = 'none';
-  if (!_welcomeForNewTeam) {  // solo marcamos "visto" para el aviso de equipo roto
-    _gdtTransfers.fixSeen = true;
-    try { await sb.from('gdt_user_teams').update({ transfers: _gdtTransfers }).eq('user_id', currentUser.id); } catch (e) {}
-  }
+  _gdtTransfers.fixSeen = true;
+  try { await sb.from('gdt_user_teams').update({ transfers: _gdtTransfers }).eq('user_id', currentUser.id); } catch (e) {}
   if (goEdit) {
     showSection('grandt', document.getElementById('nav-grandt'));
     showGDTTab('equipo', document.getElementById('gdttab-equipo'));
@@ -4085,49 +4078,51 @@ let _gdtPosFilter = 'all';
 let _gdtMatchStats = null;
 let _gdtAllTeams   = null;
 let _gdtProfiles   = {};   // perfil (nombre/alias) de cada dueño de equipo GDT, global
+let _gdtBaseTeam   = { lineup: [], bench: [], captain_id: null };  // equipo de la Fecha 1 (base)
 const GDT_SWAPS_PER_WINDOW = 3;
 const GDT_FIX_CHANGES = 6;   // tope de cambios para arreglar un equipo roto (por única vez)
-let _gdtTransfers  = { j2: 0, j3: 0, fixSeen: false };
-// Normaliza el formato guardado (versión vieja: {j2_used:bool}; nueva: {j2:contador})
+let _gdtTransfers  = { fixSeen: false, snap: {} };
+// Normaliza el formato guardado. snap = equipos por jornada (override del base):
+// { "2": {lineup,bench,captain_id}, "3": {...} }. La Fecha 1 vive en el top-level del registro.
 function gdtNormalizeTransfers(t) {
-  if (!t) return { j2: 0, j3: 0, fixSeen: false };
-  return {
-    j2: typeof t.j2 === 'number' ? t.j2 : (t.j2_used ? 1 : 0),
-    j3: typeof t.j3 === 'number' ? t.j3 : (t.j3_used ? 1 : 0),
-    fixSeen: !!t.fixSeen,
-  };
+  const snap = (t && typeof t.snap === 'object' && t.snap) ? t.snap : {};
+  return { fixSeen: !!(t && t.fixSeen), snap };
 }
 
-// Un equipo está "roto" si no cumple la formación o se pasó de fichas.
-// SOLO estos equipos reciben el arreglo por única vez (los válidos no).
-function gdtTeamRoto() {
-  return _gdtLineup.length !== GDT_SQUAD_SIZE || _gdtBench.length !== GDT_BENCH_SIZE || gdtBudgetUsed() > GDT_BUDGET;
-}
-// Cuántos jugadores del equipo actual no estaban en el equipo guardado (cambios de arreglo)
-function gdtFixChanges() {
-  let n = 0;
-  for (const id of [..._gdtLineup, ..._gdtBench]) if (!_gdtBaseline.has(id)) n++;
-  return n;
-}
-function gdtFixRestantes() { return GDT_FIX_CHANGES - gdtFixChanges(); }
-
-// Ventana de gracia: quienes NO armaron equipo tienen hasta esta fecha para hacerlo
-const GDT_NEW_TEAM_DEADLINE = new Date('2026-06-14T17:30:00-03:00').getTime();
-function gdtGraceNewTeam() { return !_gdtHasTeam && Date.now() < GDT_NEW_TEAM_DEADLINE; }
-
-// Selecciones que YA jugaron (su partido arrancó o tiene resultado): no se pueden agregar
-function gdtNacionesJugaron() {
-  const s = new Set(), now = Date.now();
-  for (const g of Object.values(FIXTURE)) {
-    for (const p of g.partidos) {
-      const ko = new Date(`${p.fecha}T${(p.hora || '20:00')}:00-03:00`).getTime();
-      if (ko <= now || (_results && _results[p.id])) { s.add(g.equipos[p.local]); s.add(g.equipos[p.visit]); }
+// ── Jornadas: la edición es por fecha. Lo que editás aplica a la PRÓXIMA fecha
+//    que todavía no empezó; las fechas ya jugadas quedan congeladas. ──
+function gdtJornadaStart(j) {
+  let min = Infinity;
+  for (const group of Object.values(FIXTURE)) {
+    for (const p of group.partidos) {
+      if (p.jornada !== j) continue;
+      const t = new Date(`${p.fecha}T${p.hora || '20:00'}:00-03:00`).getTime();
+      if (t < min) min = t;
     }
   }
-  return s;
+  return min;  // primer partido de la jornada
 }
-// ¿Se puede editar el equipo fuera de 'pre'? (arreglo de equipo roto o gracia para nuevos)
-function gdtPuedeEditarFueraDePre() { return _gdtFixEligible || gdtGraceNewTeam(); }
+// Jornada que se está editando ahora (la primera que todavía no arrancó); null = todo bloqueado
+function gdtEditJornada() {
+  for (const j of [1, 2, 3]) if (Date.now() < gdtJornadaStart(j)) return j;
+  return null;
+}
+function gdtMatchJornada(matchId) {
+  for (const g of Object.values(FIXTURE)) {
+    const p = g.partidos.find(x => x.id === matchId);
+    if (p) return p.jornada;
+  }
+  return 1;
+}
+// Equipo vigente para una jornada: el snapshot más reciente con k<=j, o el base (Fecha 1)
+function gdtTeamForJornada(team, j) {
+  const snap = (team && team.transfers && team.transfers.snap) || {};
+  for (let k = j; k >= 2; k--) {
+    const s = snap[k] || snap[String(k)];
+    if (s && Array.isArray(s.lineup) && s.lineup.length) return s;
+  }
+  return { lineup: team?.lineup || [], bench: team?.bench || [], captain_id: team?.captain_id };
+}
 let _gdtSwapMode   = false;
 let _gdtSwapOut    = null;
 
@@ -4163,71 +4158,25 @@ function gdtValidate() {
 }
 
 // ============================================================
-// GRAN DT — VENTANAS DE CAMBIO
+// GRAN DT — EDICIÓN POR FECHA
 // ============================================================
-// Cierre de cada jornada = 30 min antes de su primer partido (derivado del FIXTURE)
-function jornadaLock(j) {
-  let min = Infinity;
-  for (const group of Object.values(FIXTURE)) {
-    for (const p of group.partidos) {
-      if (p.jornada !== j) continue;
-      const t = new Date(`${p.fecha}T${p.hora || '20:00'}:00-03:00`).getTime();
-      if (t < min) min = t;
-    }
-  }
-  return min - 30 * 60 * 1000;
-}
-
+// 'pre' = editás la base (Fecha 1); 'open' = editás una fecha futura; 'locked' = todo empezó.
 function getTransferWindow() {
-  const now = Date.now();
-  if (now < jornadaLock(1)) return 'pre';
-  if (now < jornadaLock(2)) return 'j2';
-  if (now < jornadaLock(3)) return 'j3';
-  return 'locked';
+  const ej = gdtEditJornada();
+  if (ej === null) return 'locked';
+  return ej === 1 ? 'pre' : 'open';
 }
 
 function renderTransferStatus() {
-  const el  = document.getElementById('gdt-transfer-status');
+  const el = document.getElementById('gdt-transfer-status');
   if (!el) return;
-  const win = getTransferWindow();
-  if (win === 'pre') {
-    el.innerHTML = `<span class="tw-badge tw-free">🆓 Edición libre — el torneo no comenzó</span>`;
-    return;
-  }
-  // Arreglo por única vez: solo para equipos rotos (incompletos / sin fichas)
-  if (_gdtFixEligible) {
-    el.innerHTML = `<span class="tw-badge" style="background:rgba(201,170,113,0.18);color:var(--secondary);border:1px solid rgba(201,170,113,0.5)">🎁 Tu equipo quedó roto — acomodalo (${GDT_SQUAD_SIZE} titulares + ${GDT_BENCH_SIZE} suplentes, hasta 1200 fichas). No podés sumar selecciones que ya jugaron. Te quedan ${gdtFixRestantes()} cambios.</span>`;
-    return;
-  }
-  // Ventana de gracia para quienes no armaron equipo
-  if (gdtGraceNewTeam()) {
-    el.innerHTML = `<span class="tw-badge" style="background:rgba(88,166,255,0.15);color:#58a6ff;border:1px solid rgba(88,166,255,0.45)">🆕 Llegás tarde pero podés armar tu equipo — ⚠️ no podés elegir selecciones que ya jugaron.</span>`;
-    return;
-  }
-  if (win === 'locked') {
-    el.innerHTML = `<span class="tw-badge tw-locked">🔒 J3 en curso — equipo bloqueado</span>`;
-    return;
-  }
-  const usados = win === 'j2' ? _gdtTransfers.j2 : _gdtTransfers.j3;
-  const libres = Math.max(GDT_SWAPS_PER_WINDOW - usados, 0);
-  const label  = win === 'j2' ? 'Jornada 2' : 'Jornada 3';
-  if (libres <= 0) {
-    el.innerHTML = `<span class="tw-badge tw-used">✅ Cambios ${label} agotados (${GDT_SWAPS_PER_WINDOW}/${GDT_SWAPS_PER_WINDOW})</span>`;
-  } else if (_gdtSwapMode) {
-    el.innerHTML = `
-      <div class="gdt-swap-banner">
-        <div>
-          <div class="swap-title">🔄 Modo cambio ${label}</div>
-          <div class="swap-sub">${_gdtSwapOut ? 'Seleccioná el reemplazo en el pool →' : 'Hacé click en el jugador que querés sacar'}</div>
-        </div>
-        <button class="btn btn-ghost btn-sm" onclick="cancelSwapMode()">✕ Cancelar</button>
-      </div>`;
+  const ej = gdtEditJornada();
+  if (ej === null) {
+    el.innerHTML = `<span class="tw-badge tw-locked">🔒 Las fechas ya empezaron — equipo bloqueado</span>`;
+  } else if (ej === 1) {
+    el.innerHTML = `<span class="tw-badge tw-free">🆓 Edición libre — armá tu equipo (aplica desde la Fecha 1)</span>`;
   } else {
-    el.innerHTML = `
-      <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
-        <span class="tw-badge tw-open">🔄 Ventana ${label} — ${libres} de ${GDT_SWAPS_PER_WINDOW} cambios disponibles</span>
-        <button class="btn btn-sm" style="background:rgba(255,193,7,0.15);color:#ffc107;border:1px solid rgba(255,193,7,0.4)" onclick="startSwapMode()">Realizar cambio</button>
-      </div>`;
+    el.innerHTML = `<span class="tw-badge" style="background:rgba(88,166,255,0.15);color:#58a6ff;border:1px solid rgba(88,166,255,0.45)">✏️ Estás editando tu equipo para la <b>Fecha ${ej}</b>. Tus puntos de las fechas anteriores no se tocan. Podés cambiar hasta que empiece la Fecha ${ej}.</span>`;
   }
 }
 
@@ -4287,18 +4236,21 @@ async function loadGDTData() {
     sb.from('gdt_user_teams').select('*'),
   ]);
   if (teamRes.data) {
-    _gdtLineup    = teamRes.data.lineup     || [];
-    _gdtBench     = teamRes.data.bench      || [];
-    _gdtCaptainId = teamRes.data.captain_id || null;
     _gdtTransfers = gdtNormalizeTransfers(teamRes.data.transfers);
+    _gdtBaseTeam  = { lineup: teamRes.data.lineup || [], bench: teamRes.data.bench || [], captain_id: teamRes.data.captain_id || null };
     _gdtHasTeam   = true;
   } else {
+    _gdtTransfers = gdtNormalizeTransfers(null);
+    _gdtBaseTeam  = { lineup: [], bench: [], captain_id: null };
     _gdtHasTeam   = false;
   }
-  // Roster guardado de referencia, para contar los cambios de arreglo
-  _gdtBaseline = new Set([..._gdtLineup, ..._gdtBench]);
-  // Solo los equipos guardados que están ROTOS reciben el arreglo por única vez
-  _gdtFixEligible = _gdtHasTeam && gdtTeamRoto();
+  // Cargar en el estado de edición el equipo de la jornada que se está editando ahora
+  const ej = gdtEditJornada() || 1;
+  const t  = gdtTeamForJornada({ ..._gdtBaseTeam, transfers: _gdtTransfers }, ej);
+  _gdtLineup    = [...(t.lineup || [])];
+  _gdtBench     = [...(t.bench  || [])];
+  _gdtCaptainId = t.captain_id || null;
+  _gdtFixEligible = false;
   _gdtMatchStats = {};
   for (const s of (statsRes.data || [])) {
     if (!_gdtMatchStats[s.match_id]) _gdtMatchStats[s.match_id] = [];
@@ -4559,7 +4511,6 @@ function setGDTFilter(pos, btn) {
 function renderGDTPool() {
   const search  = (document.getElementById('gdt-search')?.value || '').toLowerCase();
   const budget  = gdtBudgetUsed();
-  const jugaron = gdtNacionesJugaron();
   const posClass = { GK:'pos-gk', DEF:'pos-def', MED:'pos-med', DEL:'pos-del' };
 
   let players = GDT_PLAYERS.filter(p => {
@@ -4601,17 +4552,15 @@ function renderGDTPool() {
     }
 
     // Modo normal
-    const restringido = getTransferWindow() !== 'pre' && gdtPuedeEditarFueraDePre();
-    const yaJugo      = restringido && !isSelected && jugaron.has(p.seleccion);
     const canStarter = _gdtLineup.length < GDT_SQUAD_SIZE && gdtCountByPos(p.pos) < GDT_LIMITS[p.pos].max;
     const canBench   = _gdtBench.length < GDT_BENCH_SIZE;
     const wouldExceed = !isSelected && ((!canStarter && !canBench) || budget + p.precio > GDT_BUDGET);
-    const cls = isSelected ? 'selected' : ((wouldExceed || yaJugo) ? 'disabled' : '');
+    const cls = isSelected ? 'selected' : (wouldExceed ? 'disabled' : '');
     return `<div class="gdt-pool-item ${cls}" onclick="toggleGDTPlayer('${p.id}')">
       <span class="gdt-pool-flag">${p.flag}</span>${gdtContinentBadge(p.seleccion)}
       <div class="gdt-pool-info">
         <div class="gdt-pool-name">${esc(p.nombre)}</div>
-        <div class="gdt-pool-sel">${esc(p.seleccion)}${yaJugo ? ' · ya jugó 🔒' : ''}</div>
+        <div class="gdt-pool-sel">${esc(p.seleccion)}</div>
       </div>
       <span class="gdt-pool-pos ${posClass[p.pos]}">${p.pos}</span>
       <span class="gdt-pool-price">${p.precio}🪙</span>
@@ -4671,24 +4620,9 @@ function gdtIncomplete() {
 }
 
 function toggleGDTPlayer(id) {
-  const win = getTransferWindow();
+  if (getTransferWindow() === 'locked') { showToast('🔒 Las fechas ya empezaron — no podés cambiar el equipo'); return; }
   const starterIdx = _gdtLineup.indexOf(id);
   const benchIdx   = _gdtBench.indexOf(id);
-  const yaEsta = starterIdx !== -1 || benchIdx !== -1;
-  // Fuera de 'pre': solo equipos rotos (arreglo) o usuarios sin equipo en la ventana de gracia
-  if (win !== 'pre') {
-    if (!gdtPuedeEditarFueraDePre()) { showToast(win === 'locked' ? '🔒 Equipo bloqueado' : '⚠️ Usá "Realizar cambio" para modificar el equipo'); return; }
-    // Al AGREGAR un jugador nuevo:
-    if (!yaEsta) {
-      const p = gdtPlayerById(id);
-      // No se pueden meter jugadores de selecciones que ya jugaron
-      if (p && gdtNacionesJugaron().has(p.seleccion)) { showToast(`⚠️ ${p.seleccion} ya jugó — no podés sumar sus jugadores`); return; }
-      // Tope de 6 cambios solo en modo arreglo
-      if (_gdtFixEligible && !_gdtBaseline.has(id) && gdtFixChanges() >= GDT_FIX_CHANGES) {
-        showToast(`⚠️ Llegaste a los ${GDT_FIX_CHANGES} cambios de arreglo`); return;
-      }
-    }
-  }
   if (starterIdx !== -1) {
     _gdtLineup.splice(starterIdx, 1);
     if (_gdtCaptainId === id) _gdtCaptainId = null;
@@ -4707,7 +4641,7 @@ function toggleGDTPlayer(id) {
 }
 
 function removeGDTPlayer(id, fromBench = false) {
-  if (getTransferWindow() !== 'pre' && !gdtPuedeEditarFueraDePre()) { showToast('⚠️ No podés sacar jugadores ahora — usá "Realizar cambio"'); return; }
+  if (getTransferWindow() === 'locked') { showToast('🔒 Las fechas ya empezaron — no podés cambiar el equipo'); return; }
   if (fromBench) {
     const idx = _gdtBench.indexOf(id);
     if (idx !== -1) _gdtBench.splice(idx, 1);
@@ -4725,39 +4659,34 @@ function setGDTCaptain(id) {
 }
 
 async function saveGDTTeam() {
-  const win = getTransferWindow();
+  const ej = gdtEditJornada();
+  if (ej === null) { showToast('🔒 Las fechas ya empezaron — no podés cambiar el equipo'); return; }
   const errors = gdtValidate();
-  // En 'pre' se guarda libremente. Fuera de 'pre' solo se permite guardar para
-  // dejar el equipo completo y válido (los cambios normales van por "Realizar cambio").
-  if (win !== 'pre' && !gdtPuedeEditarFueraDePre()) { showToast('⚠️ Ya no podés modificar el equipo'); return; }
   if (errors.length) { showToast('⚠️ ' + errors[0]); return; }
-  // No se pueden incorporar jugadores de selecciones que ya jugaron (salvo que ya estuvieran)
-  if (win !== 'pre') {
-    const jugaron = gdtNacionesJugaron();
-    const ilegal = [..._gdtLineup, ..._gdtBench].find(id => !_gdtBaseline.has(id) && jugaron.has(gdtPlayerById(id)?.seleccion));
-    if (ilegal) { showToast(`⚠️ Sacá a ${gdtPlayerById(ilegal)?.nombre}: su selección ya jugó`); return; }
+
+  // Fecha 1 = base (top-level); fechas siguientes = override en transfers.snap[ej]
+  _gdtTransfers.snap = _gdtTransfers.snap || {};
+  const row = {
+    user_id: currentUser.id,
+    presupuesto_usado: gdtBudgetUsed(),
+    updated_at: new Date().toISOString(),
+  };
+  if (ej === 1) {
+    _gdtBaseTeam = { lineup: [..._gdtLineup], bench: [..._gdtBench], captain_id: _gdtCaptainId };
+    row.lineup = _gdtLineup; row.bench = _gdtBench; row.captain_id = _gdtCaptainId;
+  } else {
+    _gdtTransfers.snap[ej] = { lineup: [..._gdtLineup], bench: [..._gdtBench], captain_id: _gdtCaptainId };
+    row.lineup = _gdtBaseTeam.lineup; row.bench = _gdtBaseTeam.bench; row.captain_id = _gdtBaseTeam.captain_id;
   }
-  // Arreglo por única vez: tope de cambios para equipos rotos
-  if (win !== 'pre' && _gdtFixEligible) {
-    const changes = gdtFixChanges();
-    if (changes > GDT_FIX_CHANGES) {
-      showToast(`⚠️ Máximo ${GDT_FIX_CHANGES} cambios de arreglo (hiciste ${changes}). Sacá alguno y volvé a guardar.`);
-      return;
-    }
-  }
-  const { error } = await sb.from('gdt_user_teams').upsert({
-    user_id: currentUser.id, lineup: _gdtLineup, bench: _gdtBench,
-    captain_id: _gdtCaptainId, presupuesto_usado: gdtBudgetUsed(),
-    transfers: _gdtTransfers, updated_at: new Date().toISOString(),
-  }, { onConflict: 'user_id' });
+  row.transfers = _gdtTransfers;
+
+  const { error } = await sb.from('gdt_user_teams').upsert(row, { onConflict: 'user_id' });
   if (error) { showToast('❌ Error: ' + error.message); return; }
-  _gdtBaseline    = new Set([..._gdtLineup, ..._gdtBench]);  // nuevo punto de referencia
-  _gdtHasTeam     = true;
-  _gdtFixEligible = gdtTeamRoto();   // si quedó válido, se acabó el arreglo
+  _gdtHasTeam = true;
   if (!_gdtAllTeams) _gdtAllTeams = {};
-  _gdtAllTeams[currentUser.id] = { lineup: _gdtLineup, bench: _gdtBench, captain_id: _gdtCaptainId };
+  _gdtAllTeams[currentUser.id] = { ...row };
   renderGDTBudget();
-  showToast('✅ Equipo Gran DT guardado');
+  showToast(ej === 1 ? '✅ Equipo guardado' : `✅ Equipo de la Fecha ${ej} guardado`);
 }
 
 // ============================================================
@@ -4815,39 +4744,49 @@ function gdtPlayerPlayed(playerId, matchId) {
   return stat.minutes_played > 0 || stat.goals > 0 || stat.assists > 0 || stat.is_mvp;
 }
 
-function calcGDTUserScore(userId) {
+// Partidos de una jornada que ya tienen stats sincronizadas
+function gdtJornadaMatchIds(j) {
+  return Object.keys(_gdtMatchStats || {}).filter(mid => gdtMatchJornada(mid) === j);
+}
+// ¿El jugador jugó en algún partido de esos? / ¿cuántos puntos sumó?
+function gdtPlayedInMatches(id, matchIds) {
+  return matchIds.some(mid => gdtPlayerPlayed(id, mid));
+}
+function gdtPointsInMatches(id, matchIds, captainId) {
+  return matchIds.reduce((s, mid) => s + calcGDTMatchPoints(id, mid, captainId), 0);
+}
+
+// Puntos de un usuario. jornadaFiltro: null = todas (tabla general); 1/2/3 = solo esa fecha.
+// El equipo usado en cada fecha es el de SU jornada (Fecha 1 = base; ediciones aplican a fechas siguientes).
+// Si un titular no jugó su partido de la fecha, entra el primer suplente del mismo puesto que SÍ jugó.
+function calcGDTUserScore(userId, jornadaFiltro) {
   const team = _gdtAllTeams?.[userId];
   if (!team) return { total:0, playerPts:[] };
-  const starters  = team.lineup      || [];
-  const bench     = team.bench       || [];
-  const captainId = team.captain_id;
-  const matchIds  = Object.keys(_gdtMatchStats || {});
 
   let total = 0;
-  const playerPts = starters.map(id => ({ id, pts:0 }));
+  // playerPts se mapea contra el equipo "vigente" (el que se está editando), para la cancha
+  const playerPts = (_gdtLineup || []).map(id => ({ id, pts:0 }));
+  const addLive = (id, pts) => { const i = playerPts.findIndex(pp => pp.id === id); if (i >= 0) playerPts[i].pts += pts; };
 
-  for (const matchId of matchIds) {
+  const jornadas = jornadaFiltro ? [jornadaFiltro] : [1, 2, 3];
+  for (const j of jornadas) {
+    const jm = gdtJornadaMatchIds(j);
+    if (!jm.length) continue;
+    const tj = gdtTeamForJornada(team, j);
+    const starters = tj.lineup || [], bench = tj.bench || [], captainId = tj.captain_id;
     const benchUsed = new Set();
-    for (let i = 0; i < starters.length; i++) {
-      const sid = starters[i];
-      if (!gdtPlayerPlayed(sid, matchId)) {
-        // Titular no jugó → primer suplente de misma posición
-        const starter = gdtPlayerById(sid);
-        const subId   = bench.find(bid => {
-          if (benchUsed.has(bid)) return false;
-          return gdtPlayerById(bid)?.pos === starter?.pos;
-        });
-        if (subId) {
-          benchUsed.add(subId);
-          const subPts = calcGDTMatchPoints(subId, matchId, null);
-          playerPts[i].pts += subPts;
-          total += subPts;
-        }
+    for (const sid of starters) {
+      let pts = 0;
+      if (gdtPlayedInMatches(sid, jm)) {
+        pts = gdtPointsInMatches(sid, jm, captainId);
       } else {
-        const pts = calcGDTMatchPoints(sid, matchId, captainId);
-        playerPts[i].pts += pts;
-        total += pts;
+        // titular no jugó → primer suplente del mismo puesto que SÍ jugó
+        const pos = gdtPlayerById(sid)?.pos;
+        const sub = bench.find(b => !benchUsed.has(b) && gdtPlayerById(b)?.pos === pos && gdtPlayedInMatches(b, jm));
+        if (sub) { benchUsed.add(sub); pts = gdtPointsInMatches(sub, jm, captainId); }
       }
+      total += pts;
+      addLive(sid, pts);
     }
   }
   total = Math.round(total * 10) / 10;
@@ -4858,8 +4797,10 @@ function calcGDTUserScore(userId) {
 // ============================================================
 // GRAN DT — LEADERBOARD
 // ============================================================
+let _gdtLbJornada = null;   // null = tabla general; 1/2/3 = por fecha
+function setGDTLbJornada(j) { _gdtLbJornada = j; renderGDTLeaderboard(); }
+
 function renderGDTLeaderboard() {
-  const participants = _participants || [];
   const container    = document.getElementById('gdt-leaderboard');
   const statsEl      = document.getElementById('gdt-lb-stats');
   if (!container) return;
@@ -4867,18 +4808,22 @@ function renderGDTLeaderboard() {
   // El Gran DT es global: listamos a TODOS los que armaron equipo (no depende del torneo)
   const rows = Object.keys(_gdtAllTeams || {}).map(uid => {
     const prof  = _gdtProfiles[uid] || { nombre: 'Jugador', alias: '?' };
-    const score = calcGDTUserScore(uid);
+    const score = calcGDTUserScore(uid, _gdtLbJornada);
     return { id: uid, nombre: prof.nombre, alias: prof.alias, gdtTotal: score.total, hasTeam: true, team: _gdtAllTeams[uid] };
   }).sort((a,b) => b.gdtTotal - a.gdtTotal);
 
   const matchesSynced = Object.keys(_gdtMatchStats || {}).length;
   if (statsEl) statsEl.textContent = `${rows.length} equipos · ${matchesSynced} partidos con stats`;
 
-  if (!rows.length) { container.innerHTML = `<div class="empty-state"><div class="icon">🏆</div><h3>Todavía nadie armó su equipo</h3><p>Andá a "Mi Equipo" y armá el tuyo.</p></div>`; return; }
+  // Selector General / por Fecha
+  const tab = (j, label) => `<button class="btn btn-sm ${_gdtLbJornada===j?'btn-gold':'btn-ghost'}" onclick="setGDTLbJornada(${j===null?'null':j})">${label}</button>`;
+  const selector = `<div class="flex-gap" style="margin-bottom:0.75rem;flex-wrap:wrap">${tab(null,'🏆 General')}${tab(1,'Fecha 1')}${tab(2,'Fecha 2')}${tab(3,'Fecha 3')}</div>`;
 
-  let html = `<table class="gdt-lb-table"><thead><tr>
+  if (!rows.length) { container.innerHTML = selector + `<div class="empty-state"><div class="icon">🏆</div><h3>Todavía nadie armó su equipo</h3><p>Andá a "Mi Equipo" y armá el tuyo.</p></div>`; return; }
+
+  let html = selector + `<table class="gdt-lb-table"><thead><tr>
     <th style="width:46px">#</th><th>Participante</th>
-    <th style="text-align:center">Puntos GDT</th><th>Equipo</th>
+    <th style="text-align:center">${_gdtLbJornada ? 'Pts Fecha '+_gdtLbJornada : 'Puntos GDT'}</th><th>Equipo</th>
   </tr></thead><tbody>`;
 
   rows.forEach((p, i) => {
