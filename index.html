@@ -1238,8 +1238,11 @@
     <div id="admin-content" style="display:none">
       <div class="card" style="margin-bottom:1rem; padding:1.25rem; text-align:center; border-color:rgba(201,170,113,0.3)">
         <h2 style="margin:0 0 0.5rem">🏆 Anunciar Ganador</h2>
-        <p style="font-size:0.83rem; color:var(--text-muted); margin-bottom:1rem">Mostrá el ganador del torneo activo en pantalla grande para todos.</p>
-        <button class="btn btn-gold" onclick="showWinnerAnnouncement()">🎉 Anunciar Ganador</button>
+        <p style="font-size:0.83rem; color:var(--text-muted); margin-bottom:1rem">Mostrá el ganador en pantalla grande para todos (con confeti).</p>
+        <div class="flex-gap" style="justify-content:center;flex-wrap:wrap">
+          <button class="btn btn-gold" onclick="showWinnerAnnouncement()">🎉 Anunciar Prode</button>
+          <button class="btn btn-gold" onclick="showWinnerAnnouncement(WINNER_ANNOUNCE_GDT)">⚽ Anunciar Gran DT</button>
+        </div>
       </div>
       <div class="card api-panel" style="margin-bottom:1rem">
         <div class="flex-between" style="margin-bottom:0.75rem">
@@ -1331,7 +1334,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-18g';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-18h';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = true;
@@ -1342,6 +1345,12 @@ const WINNER_ANNOUNCE = {
   label:   'Ganadores · Prode Fecha 1',
   nombres: 'Andru y Elias',
   sub:     '¡Empatados en la cima con 21 puntos! 🏆',
+  imagen:  'ganador.jpg',
+};
+const WINNER_ANNOUNCE_GDT = {
+  label:   'Ganador · Gran DT Fecha 1',
+  nombres: 'Fran',
+  sub:     '¡El mejor DT de la fecha con 173 puntos! 🏆⚽',
   imagen:  'ganador.jpg',
 };
 const STANDINGS_TEASER = `<div class="empty-state" style="padding:2.5rem 1rem;text-align:center">
