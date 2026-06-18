@@ -1330,7 +1330,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = '00000000-0000-0000-0000-000000000001';
-const APP_VERSION = '2026-06-18d';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-18e';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = true;
@@ -2302,7 +2302,8 @@ function calcScore(pred, result) {
 
 // Ajustes manuales de puntos para el prode (ej. bonus por VAR 😂). Se suman al total.
 const PRODE_BONUS = [
-  { match: 'rayo', puntos: 6 },   // Rayo Amarillo — 6 por VAR
+  { match: 'rayo', puntos: 6 },      // Rayo Amarillo — 6 por VAR
+  { match: 'mariana', puntos: 3 },   // Mariana — 3 por VAR (pronósticos que no se guardaron)
 ];
 function prodeBonus(p) {
   const txt = gdtSlug(p.nombre || '') + ' ' + gdtSlug(p.alias || '');
@@ -2394,11 +2395,13 @@ function renderLeaderboard() {
       <th style="text-align:center">❌</th>
       <th style="text-align:center;min-width:85px">Pronóst.</th>
     </tr></thead><tbody>`;
+  let _rank = 0, _prevTotal = null;
   scores.forEach((p, i) => {
-    const rc  = i === 0 ? 'rank-1' : i === 1 ? 'rank-2' : i === 2 ? 'rank-3' : 'rank-other';
+    if (p.total !== _prevTotal) { _rank = i + 1; _prevTotal = p.total; }  // empate: mismo puntaje → misma posición
+    const rc  = _rank === 1 ? 'rank-1' : _rank === 2 ? 'rank-2' : _rank === 3 ? 'rank-3' : 'rank-other';
     const isMe = p.id === currentUser?.id;
     html += `<tr style="${isMe ? 'background:rgba(201,170,113,0.04)' : ''}">
-      <td><span class="rank-badge ${rc}">${i+1}</span></td>
+      <td><span class="rank-badge ${rc}">${_rank}</span></td>
       <td>
         <div style="font-weight:600">${esc(p.nombre)}${isMe ? ' <span class="admin-badge" style="background:var(--primary)">Vos</span>' : ''}</div>
         <div style="font-size:0.73rem;color:var(--secondary)">@${esc(p.alias)}</div>
@@ -2430,11 +2433,13 @@ function renderTop10(scores, leader) {
     el.innerHTML = `<div class="empty-state" style="padding:1.5rem 0.5rem"><div class="icon" style="font-size:1.8rem">🏆</div><h3 style="font-size:0.9rem">Sin datos aún</h3></div>`;
     return;
   }
+  let _r = 0, _pt = null;
   el.innerHTML = scores.map((p, i) => {
-    const rc  = i === 0 ? 'rank-1' : i === 1 ? 'rank-2' : i === 2 ? 'rank-3' : 'rank-other';
+    if (p.total !== _pt) { _r = i + 1; _pt = p.total; }
+    const rc  = _r === 1 ? 'rank-1' : _r === 2 ? 'rank-2' : _r === 3 ? 'rank-3' : 'rank-other';
     const pct = leader > 0 ? Math.round(p.total / leader * 100) : 100;
     return `<div class="top10-item">
-      <span class="rank-badge ${rc}" style="flex-shrink:0;width:24px;height:24px;font-size:0.75rem">${i+1}</span>
+      <span class="rank-badge ${rc}" style="flex-shrink:0;width:24px;height:24px;font-size:0.75rem">${_r}</span>
       <div style="flex:1;min-width:0">
         <div class="top10-name">${esc(p.nombre)}</div>
         <div class="top10-alias">@${esc(p.alias)}</div>
@@ -4881,15 +4886,17 @@ function renderGDTLeaderboard() {
     <th style="text-align:center">${_gdtLbJornada ? 'Pts Fecha '+_gdtLbJornada : 'Puntos GDT'}</th><th>Equipo</th>
   </tr></thead><tbody>`;
 
+  let _rank = 0, _prevTotal = null;
   rows.forEach((p, i) => {
-    const rc   = i===0?'rank-1':i===1?'rank-2':i===2?'rank-3':'rank-other';
+    if (p.gdtTotal !== _prevTotal) { _rank = i + 1; _prevTotal = p.gdtTotal; }  // empate: mismo puntaje → misma posición
+    const rc   = _rank===1?'rank-1':_rank===2?'rank-2':_rank===3?'rank-3':'rank-other';
     const isMe = p.id === currentUser?.id;
     const capName = p.team?.captain_id ? (gdtPlayerById(p.team.captain_id)?.nombre || '—') : '—';
     const preview = (p.team?.lineup||[]).slice(0,3).map(id => {
       const pl = gdtPlayerById(id); return pl ? `${pl.flag} ${pl.nombre.split(' ').pop()}` : '';
     }).filter(Boolean).join(', ');
     html += `<tr style="${isMe?'background:rgba(201,170,113,0.04)':''}">
-      <td><span class="rank-badge ${rc}">${i+1}</span></td>
+      <td><span class="rank-badge ${rc}">${_rank}</span></td>
       <td>
         <div style="font-weight:600">${esc(p.nombre)}${isMe?' <span class="admin-badge" style="background:var(--primary)">Vos</span>':''}</div>
         <div style="font-size:0.73rem;color:var(--secondary)">@${esc(p.alias)}</div>
