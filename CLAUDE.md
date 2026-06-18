@@ -80,6 +80,10 @@ En el panel de **Supabase → Authentication → URL Configuration**:
 - Los `fecha`/`hora` del FIXTURE están en **hora argentina** y se parsean con offset explícito: `new Date(`${fecha}T${hora}:00-03:00`)`. **No** "corregirlos" a UTC (`Z`): eso adelanta los bloqueos 3 horas (ya pasó, revertido en 2a53f55). JS los convierte solo a la zona del visitante.
 - Pronósticos: se bloquean **5 min** antes de cada partido (`isMatchLocked`). Ventanas del Gran DT: 30 min antes del primer partido de cada jornada, derivadas del FIXTURE (`jornadaLock`), sin fechas hardcodeadas.
 
+## Límite de 1000 filas (Supabase) — IMPORTANTE
+- Supabase/PostgREST devuelve **máximo 1000 filas por consulta**. Cualquier `select` de una tabla que **crece** (sin filtro chico) DEBE paginar con **`sbFetchAll(table, columns)`** (pagina de a 1000 con `.range`). Ya pasó: `gdt_match_stats` (52 filas × partido → 3744 a fin del Mundial) hacía que la app cargara solo 20 partidos y el resto puntuara 0.
+- Tablas que crecen y ya están paginadas: `gdt_match_stats`, `predictions`, `gdt_user_teams`, `profiles` (global). Si agregás una consulta nueva a una tabla que pueda pasar 1000 filas, usá `sbFetchAll`.
+
 ## Deploy / caché
 - **⚠️ Subir `APP_VERSION`** (constante arriba del todo en index.html) en **cada deploy** que toque JS. `checkForUpdate` compara la versión corriendo contra la publicada y **fuerza recarga** de pestañas viejas (cada 4 min + al volver a la pestaña). Esto evita que código viejo cacheado corrompa datos (pasó: usuarios en la página vieja sobrescribían su equipo de Fecha 1 al editar, porque el código viejo no tiene el modelo por jornada).
 

@@ -1330,7 +1330,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = '00000000-0000-0000-0000-000000000001';
-const APP_VERSION = '2026-06-18b';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-18c';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -1768,8 +1768,7 @@ async function loadAllData() {
 }
 
 async function loadGlobalData() {
-  const { data: profiles } = await sb.from('profiles').select('id, nombre, alias, created_at').order('created_at');
-  _globalParticipants = profiles || [];
+  _globalParticipants = await sbFetchAll('profiles', 'id, nombre, alias, created_at');
   const preds = await sbFetchAll('predictions', 'user_id, match_id, goals_local, goals_visit');
   const seen = new Set();
   _globalPredictions = [];
@@ -2302,7 +2301,8 @@ function prodeBonus(p) {
   return PRODE_BONUS.reduce((b, r) => b + (txt.includes(r.match) ? r.puntos : 0), 0);
 }
 
-function calcScores() {
+// jornadaFiltro: null = tabla general (con bonus); 1/2/3 = solo esa fecha.
+function calcScores(jornadaFiltro) {
   const participants = _participants || [];
   const results      = _results || {};
   return participants.map(p => {
@@ -2310,6 +2310,7 @@ function calcScores() {
     let total = 0, exact = 0, partial = 0, played = 0;
     for (const group of Object.values(FIXTURE)) {
       for (const partido of group.partidos) {
+        if (jornadaFiltro && partido.jornada !== jornadaFiltro) continue;
         const res = results[partido.id];
         if (!res) continue;
         played++;
@@ -2318,7 +2319,7 @@ function calcScores() {
         if (pts === 3) exact++; else if (pts === 1) partial++;
       }
     }
-    total += prodeBonus(p);
+    if (!jornadaFiltro) total += prodeBonus(p);
     const predCount = Object.values(myPreds).filter(v => v.local !== undefined && v.visit !== undefined).length;
     return { ...p, total, exact, partial, zero: played - exact - partial, played, predCount };
   }).sort((a, b) => b.total - a.total || b.exact - a.exact || b.partial - a.partial || a.nombre.localeCompare(b.nombre));
@@ -2351,6 +2352,9 @@ function calcGlobalScores() {
   }).sort((a, b) => b.total - a.total || b.exact - a.exact || b.partial - a.partial || a.nombre.localeCompare(b.nombre));
 }
 
+let _prodeLbJornada = null;   // null = general; 1/2/3 = por fecha
+function setProdeLbJornada(j) { _prodeLbJornada = j; renderLeaderboard(); }
+
 function renderLeaderboard() {
   const participants = _participants || [];
   const resultsCount = Object.keys(_results || {}).length;
@@ -2362,9 +2366,11 @@ function renderLeaderboard() {
     renderTop10([], 0); renderTorneoStats(0, 0, 0);
     return;
   }
-  const scores = calcScores();
+  const scores = calcScores(_prodeLbJornada);
   const leader = scores[0]?.total || 0;
-  let html = `<table class="leaderboard-table">
+  const tab = (j, label) => `<button class="btn btn-sm ${_prodeLbJornada===j?'btn-gold':'btn-ghost'}" onclick="setProdeLbJornada(${j===null?'null':j})">${label}</button>`;
+  const selector = `<div class="flex-gap" style="margin-bottom:0.75rem;flex-wrap:wrap">${tab(null,'🏆 General')}${tab(1,'Fecha 1')}${tab(2,'Fecha 2')}${tab(3,'Fecha 3')}</div>`;
+  let html = selector + `<table class="leaderboard-table">
     <thead><tr>
       <th style="width:46px">#</th>
       <th>Participante</th>
@@ -4263,12 +4269,12 @@ async function sbFetchAll(table, columns = '*') {
 
 async function loadGDTData() {
   if (!currentUser) return;
-  const [teamRes, statsData, allTeamsRes] = await Promise.all([
+  const [teamRes, statsData, allTeamsData] = await Promise.all([
     sb.from('gdt_user_teams').select('*').eq('user_id', currentUser.id).maybeSingle(),
     sbFetchAll('gdt_match_stats'),     // paginado: sin esto se perdían stats al pasar las 1000 filas
-    sb.from('gdt_user_teams').select('*'),
+    sbFetchAll('gdt_user_teams'),
   ]);
-  const statsRes = { data: statsData };
+  const statsRes = { data: statsData }, allTeamsRes = { data: allTeamsData };
   if (teamRes.data) {
     _gdtTransfers = gdtNormalizeTransfers(teamRes.data.transfers);
     _gdtBaseTeam  = { lineup: teamRes.data.lineup || [], bench: teamRes.data.bench || [], captain_id: teamRes.data.captain_id || null };
