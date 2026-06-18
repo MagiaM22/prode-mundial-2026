@@ -1334,23 +1334,23 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-18k';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-18l';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
-const STANDINGS_HIDDEN = false;
+const STANDINGS_HIDDEN = true;
 
 // Anuncio de ganador: lo muestra el botón "Anunciar Ganador" (solo admin). Editar acá.
 // La imagen debe estar en el repo con ese nombre. nombres/sub son texto libre.
 // activo:true → se muestra solo a cada usuario (1 vez por sesión) al entrar. id = key de sesión.
 const WINNER_ANNOUNCE = {
-  activo: true, id: 'prode-f1',
+  activo: false, id: 'prode-f1',
   label:   'Ganadores · Prode Fecha 1',
   nombres: 'Andru y Elias',
   sub:     '¡Empatados en la cima con 21 puntos! 🏆',
   imagen:  'ganador.png',
 };
 const WINNER_ANNOUNCE_GDT = {
-  activo: true, id: 'gdt-f1',
+  activo: false, id: 'gdt-f1',
   label:   'Ganador · Gran DT Fecha 1',
   nombres: 'Fran',
   sub:     '¡El mejor DT de la fecha con 173 puntos! 🏆⚽',
