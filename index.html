@@ -1329,8 +1329,8 @@
 const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
-const DEFAULT_TOURNAMENT_ID = '00000000-0000-0000-0000-000000000001';
-const APP_VERSION = '2026-06-18e';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
+const APP_VERSION = '2026-06-18f';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = true;
@@ -1777,12 +1777,23 @@ async function loadAllData() {
 
 async function loadGlobalData() {
   _globalParticipants = await sbFetchAll('profiles', 'id, nombre, alias, created_at');
-  const preds = await sbFetchAll('predictions', 'user_id, match_id, goals_local, goals_visit');
-  const seen = new Set();
+  const preds = await sbFetchAll('predictions', 'user_id, match_id, goals_local, goals_visit, tournament_id');
+  // Los pronósticos quedaron repartidos en varios torneos (incluido uno viejo/fantasma).
+  // Cada usuario cuenta desde su torneo "casa" (donde más cargó), para no mezclar ni perder.
+  const byUserTor = {};
+  for (const p of preds) {
+    const tid = p.tournament_id || 'null';
+    const u = byUserTor[p.user_id] || (byUserTor[p.user_id] = {});
+    (u[tid] || (u[tid] = [])).push(p);
+  }
   _globalPredictions = [];
-  for (const p of (preds || [])) {
-    const key = p.user_id + '|' + p.match_id;
-    if (!seen.has(key)) { seen.add(key); _globalPredictions.push(p); }
+  for (const uid of Object.keys(byUserTor)) {
+    let casa = null, max = -1;
+    for (const tid of Object.keys(byUserTor[uid])) {
+      const n = byUserTor[uid][tid].length;
+      if (n > max) { max = n; casa = tid; }
+    }
+    if (casa) _globalPredictions.push(...byUserTor[uid][casa]);
   }
 }
 
@@ -2334,7 +2345,8 @@ function calcScores(jornadaFiltro) {
   }).sort((a, b) => b.total - a.total || b.exact - a.exact || b.partial - a.partial || a.nombre.localeCompare(b.nombre));
 }
 
-function calcGlobalScores() {
+// Tabla consolidada (todos los usuarios, cada uno desde su torneo casa). jornadaFiltro: null/1/2/3.
+function calcGlobalScores(jornadaFiltro) {
   const participants = _globalParticipants || [];
   const results      = _results || {};
   const predsMap = {};
@@ -2347,6 +2359,7 @@ function calcGlobalScores() {
     let total = 0, exact = 0, partial = 0, played = 0;
     for (const group of Object.values(FIXTURE)) {
       for (const partido of group.partidos) {
+        if (jornadaFiltro && partido.jornada !== jornadaFiltro) continue;
         const res = results[partido.id];
         if (!res) continue;
         played++;
@@ -2355,7 +2368,7 @@ function calcGlobalScores() {
         if (pts === 3) exact++; else if (pts === 1) partial++;
       }
     }
-    total += prodeBonus(p);
+    if (!jornadaFiltro) total += prodeBonus(p);
     const predCount = Object.keys(myPreds).length;
     return { ...p, total, exact, partial, zero: played - exact - partial, played, predCount };
   }).sort((a, b) => b.total - a.total || b.exact - a.exact || b.partial - a.partial || a.nombre.localeCompare(b.nombre));
@@ -2365,7 +2378,8 @@ let _prodeLbJornada = null;   // null = general; 1/2/3 = por fecha
 function setProdeLbJornada(j) { _prodeLbJornada = j; renderLeaderboard(); }
 
 function renderLeaderboard() {
-  const participants = _participants || [];
+  // Tabla CONSOLIDADA (todos los usuarios de todos los torneos, cada uno desde su casa).
+  const participants = _globalParticipants || [];
   const resultsCount = Object.keys(_results || {}).length;
   document.getElementById('tabla-stats').textContent =
     `${resultsCount}/${TOTAL_MATCHES} resultados · ${participants.length} participantes`;
@@ -2381,7 +2395,7 @@ function renderLeaderboard() {
     renderTop10([], 0); renderTorneoStats(0, 0, 0);
     return;
   }
-  const scores = calcScores(_prodeLbJornada);
+  const scores = calcGlobalScores(_prodeLbJornada);
   const leader = scores[0]?.total || 0;
   const tab = (j, label) => `<button class="btn btn-sm ${_prodeLbJornada===j?'btn-gold':'btn-ghost'}" onclick="setProdeLbJornada(${j===null?'null':j})">${label}</button>`;
   const selector = `<div class="flex-gap" style="margin-bottom:0.75rem;flex-wrap:wrap">${tab(null,'🏆 General')}${tab(1,'Fecha 1')}${tab(2,'Fecha 2')}${tab(3,'Fecha 3')}</div>`;
