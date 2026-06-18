@@ -1334,25 +1334,35 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-18i';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-18j';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
-const STANDINGS_HIDDEN = true;
+const STANDINGS_HIDDEN = false;
 
 // Anuncio de ganador: lo muestra el botón "Anunciar Ganador" (solo admin). Editar acá.
 // La imagen debe estar en el repo con ese nombre. nombres/sub son texto libre.
+// activo:true → se muestra solo a cada usuario (1 vez por sesión) al entrar. id = key de sesión.
 const WINNER_ANNOUNCE = {
+  activo: true, id: 'prode-f1',
   label:   'Ganadores · Prode Fecha 1',
   nombres: 'Andru y Elias',
   sub:     '¡Empatados en la cima con 21 puntos! 🏆',
   imagen:  'ganador-prode.png',
 };
 const WINNER_ANNOUNCE_GDT = {
+  activo: true, id: 'gdt-f1',
   label:   'Ganador · Gran DT Fecha 1',
   nombres: 'Fran',
   sub:     '¡El mejor DT de la fecha con 173 puntos! 🏆⚽',
   imagen:  'ganador-gdt.png',
 };
+// Muestra el anuncio una sola vez por sesión (al entrar al prode / al Gran DT).
+function maybeAutoAnnounce(cfg) {
+  if (!cfg || !cfg.activo) return;
+  const key = 'ann_' + cfg.id + '_' + APP_VERSION;
+  try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, '1'); } catch (e) {}
+  setTimeout(() => showWinnerAnnouncement(cfg), 600);
+}
 const STANDINGS_TEASER = `<div class="empty-state" style="padding:2.5rem 1rem;text-align:center">
   <div style="font-size:3rem;margin-bottom:0.5rem">🏆🔒</div>
   <h3 style="color:var(--secondary);font-size:1.25rem;margin-bottom:0.6rem">¡Suspenso!</h3>
@@ -1670,6 +1680,7 @@ async function onUserReady(user) {
   updateTournamentChip();
   renderHome();
   maybeShowFixWelcome();
+  maybeAutoAnnounce(WINNER_ANNOUNCE);   // al entrar al prode → ganador
 }
 
 // Bienvenida: avisa que ahora se puede editar el equipo para la próxima fecha (una vez)
@@ -4367,6 +4378,7 @@ function renderGranDT() {
   renderGDTPool();
   renderGDTBudget();
   showGDTTab('equipo', document.getElementById('gdttab-equipo'));
+  maybeAutoAnnounce(WINNER_ANNOUNCE_GDT);   // al entrar al Gran DT → ganador
 }
 
 function showGDTTab(tab, btn) {
