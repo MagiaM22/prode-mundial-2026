@@ -1330,7 +1330,15 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = '00000000-0000-0000-0000-000000000001';
-const APP_VERSION = '2026-06-18c';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-18d';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+
+// Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
+const STANDINGS_HIDDEN = true;
+const STANDINGS_TEASER = `<div class="empty-state" style="padding:2.5rem 1rem;text-align:center">
+  <div style="font-size:3rem;margin-bottom:0.5rem">🏆🔒</div>
+  <h3 style="color:var(--secondary);font-size:1.25rem;margin-bottom:0.6rem">¡Suspenso!</h3>
+  <p style="font-size:0.95rem;line-height:1.55;color:var(--text)">El <b>ganador de la Fecha 1</b> y la <b>tabla general</b><br>se anuncian <b style="color:var(--secondary)">muy pronto</b>. 👀<br><br>Aguantá un poquito…</p>
+</div>`;
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -2361,6 +2369,12 @@ function renderLeaderboard() {
   document.getElementById('tabla-stats').textContent =
     `${resultsCount}/${TOTAL_MATCHES} resultados · ${participants.length} participantes`;
   const container = document.getElementById('leaderboard-container');
+  if (STANDINGS_HIDDEN) {
+    container.innerHTML = STANDINGS_TEASER;
+    const t10 = document.getElementById('top10-container'); if (t10) t10.innerHTML = STANDINGS_TEASER;
+    renderTorneoStats(resultsCount, participants.length, 0);
+    return;
+  }
   if (participants.length === 0) {
     container.innerHTML = `<div class="empty-state"><div class="icon">🏆</div><h3>No hay participantes</h3><p>Todavía nadie se registró.</p></div>`;
     renderTop10([], 0); renderTorneoStats(0, 0, 0);
@@ -2760,7 +2774,7 @@ function renderTorneos() {
       ${t.description ? `<div class="torneo-card-desc">${esc(t.description)}</div>` : ''}
       <div class="torneo-card-meta">
         <span>📅 ${new Date(t.created_at).toLocaleDateString('es-AR',{day:'numeric',month:'short',year:'numeric'})}</span>
-        ${isActive && leader ? `<span>🥇 Líder: <strong style="color:var(--secondary)">${esc(leader.alias)}</strong> · ${leader.total}pts</span>` : ''}
+        ${isActive && leader && !STANDINGS_HIDDEN ? `<span>🥇 Líder: <strong style="color:var(--secondary)">${esc(leader.alias)}</strong> · ${leader.total}pts</span>` : ''}
       </div>
       ${t.invite_code ? `
       <div style="margin-top:0.5rem;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;padding:0.45rem 0.7rem;display:flex;align-items:center;justify-content:space-between;gap:0.5rem">
@@ -4844,6 +4858,7 @@ function renderGDTLeaderboard() {
   const container    = document.getElementById('gdt-leaderboard');
   const statsEl      = document.getElementById('gdt-lb-stats');
   if (!container) return;
+  if (STANDINGS_HIDDEN) { container.innerHTML = STANDINGS_TEASER; if (statsEl) statsEl.textContent = ''; return; }
 
   // El Gran DT es global: listamos a TODOS los que armaron equipo (no depende del torneo)
   const rows = Object.keys(_gdtAllTeams || {}).map(uid => {
