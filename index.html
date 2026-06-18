@@ -1330,7 +1330,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = '00000000-0000-0000-0000-000000000001';
-const APP_VERSION = '2026-06-18a';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-18b';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -1770,7 +1770,7 @@ async function loadAllData() {
 async function loadGlobalData() {
   const { data: profiles } = await sb.from('profiles').select('id, nombre, alias, created_at').order('created_at');
   _globalParticipants = profiles || [];
-  const { data: preds } = await sb.from('predictions').select('user_id, match_id, goals_local, goals_visit');
+  const preds = await sbFetchAll('predictions', 'user_id, match_id, goals_local, goals_visit');
   const seen = new Set();
   _globalPredictions = [];
   for (const p of (preds || [])) {
@@ -1798,10 +1798,16 @@ async function loadParticipants() {
 }
 
 async function loadPredictions() {
-  const { data } = await sb.from('predictions')
-    .select('user_id, match_id, goals_local, goals_visit')
-    .eq('tournament_id', activeTournament.id);
-  _predictions = data || [];
+  _predictions = [];
+  for (let from = 0; ; from += 1000) {
+    const { data } = await sb.from('predictions')
+      .select('user_id, match_id, goals_local, goals_visit')
+      .eq('tournament_id', activeTournament.id)
+      .range(from, from + 999);
+    if (!data || !data.length) break;
+    _predictions.push(...data);
+    if (data.length < 1000) break;
+  }
 }
 
 async function loadResults() {
@@ -4243,13 +4249,26 @@ async function executeSwap(newId) {
 // ============================================================
 // GRAN DT — CARGA DE DATOS
 // ============================================================
+// Trae TODAS las filas de una tabla en páginas de 1000 (Supabase corta en 1000 por defecto).
+async function sbFetchAll(table, columns = '*') {
+  const all = [], size = 1000;
+  for (let from = 0; ; from += size) {
+    const { data, error } = await sb.from(table).select(columns).range(from, from + size - 1);
+    if (error || !data || !data.length) break;
+    all.push(...data);
+    if (data.length < size) break;
+  }
+  return all;
+}
+
 async function loadGDTData() {
   if (!currentUser) return;
-  const [teamRes, statsRes, allTeamsRes] = await Promise.all([
+  const [teamRes, statsData, allTeamsRes] = await Promise.all([
     sb.from('gdt_user_teams').select('*').eq('user_id', currentUser.id).maybeSingle(),
-    sb.from('gdt_match_stats').select('*'),
+    sbFetchAll('gdt_match_stats'),     // paginado: sin esto se perdían stats al pasar las 1000 filas
     sb.from('gdt_user_teams').select('*'),
   ]);
+  const statsRes = { data: statsData };
   if (teamRes.data) {
     _gdtTransfers = gdtNormalizeTransfers(teamRes.data.transfers);
     _gdtBaseTeam  = { lineup: teamRes.data.lineup || [], bench: teamRes.data.bench || [], captain_id: teamRes.data.captain_id || null };
@@ -5222,8 +5241,8 @@ async function syncGDTStats(matchId, silent) {
     }
     if (error) throw error;
 
-    // Reload stats cache
-    const { data: freshStats } = await sb.from('gdt_match_stats').select('*');
+    // Reload stats cache (paginado para no perder partidos al pasar las 1000 filas)
+    const freshStats = await sbFetchAll('gdt_match_stats');
     _gdtMatchStats = {};
     for (const s of (freshStats || [])) {
       if (!_gdtMatchStats[s.match_id]) _gdtMatchStats[s.match_id] = [];
