@@ -1330,8 +1330,23 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = '00000000-0000-0000-0000-000000000001';
+const APP_VERSION = '2026-06-18a';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// Auto-actualización: si hay una versión nueva publicada, recargar (evita que pestañas
+// viejas cacheadas corrompan datos con código desactualizado).
+let _updateChecking = false;
+async function checkForUpdate() {
+  if (_updateChecking) return; _updateChecking = true;
+  try {
+    const txt = await (await fetch(location.pathname + '?v=' + Date.now(), { cache: 'no-store' })).text();
+    const m = txt.match(/APP_VERSION\s*=\s*'([^']+)'/);
+    if (m && m[1] !== APP_VERSION) { location.reload(); }
+  } catch (e) {} finally { _updateChecking = false; }
+}
+setInterval(checkForUpdate, 4 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForUpdate(); });
 
 // ============================================================
 // FIXTURE
