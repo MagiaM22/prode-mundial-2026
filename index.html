@@ -1334,7 +1334,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-18p';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-20a';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -1343,14 +1343,14 @@ const STANDINGS_HIDDEN = false;
 // La imagen debe estar en el repo con ese nombre. nombres/sub son texto libre.
 // activo:true → se muestra solo a cada usuario (1 vez por sesión) al entrar. id = key de sesión.
 const WINNER_ANNOUNCE = {
-  activo: true, id: 'prode-f1',
+  activo: false, id: 'prode-f1',      // Fecha 1 ya pasó → no se muestra solo (el botón admin igual funciona)
   label:   'Ganadores · Prode Fecha 1',
   nombres: 'Andru y Elias',
   sub:     '¡Empatados en la cima con 21 puntos! 🏆',
   imagen:  'ganador.png',
 };
 const WINNER_ANNOUNCE_GDT = {
-  activo: true, id: 'gdt-f1',
+  activo: false, id: 'gdt-f1',        // Fecha 1 ya pasó → no se muestra solo (el botón admin igual funciona)
   label:   '🏆 Felicitaciones al Ganador del Gran DT',
   nombres: 'Fran',
   sub:     '¡El mejor DT de la Fecha 1 con 173 puntos! ⚽',
@@ -1811,8 +1811,8 @@ async function loadAllData() {
 
 async function loadGlobalData() {
   _globalParticipants = await sbFetchAll('profiles', 'id, nombre, alias, created_at');
-  // Guardamos TODOS los pronósticos (con su torneo). La selección del mejor torneo
-  // por usuario se hace en calcGlobalScores (necesita los resultados ya cargados).
+  // Guardamos TODOS los pronósticos (de todos los torneos). calcGlobalScores los une
+  // por usuario quedándose con la mejor predicción de cada partido (necesita los resultados).
   _globalPredictions = await sbFetchAll('predictions', 'user_id, match_id, goals_local, goals_visit, tournament_id');
 }
 
@@ -2385,26 +2385,26 @@ function scoreOfPreds(mp, results, jornadaFiltro) {
 function calcGlobalScores(jornadaFiltro) {
   const participants = _globalParticipants || [];
   const results      = _results || {};
-  // user -> tournament -> {match -> pred}
-  const byUserTor = {};
+  // Los pronósticos quedaron repartidos en varios torneos (default fantasma + el real)
+  // por un bug viejo. Para que NADIE pierda puntos por eso, a cada usuario le unimos
+  // TODOS sus torneos quedándonos, por partido, con el pronóstico que más puntúa.
+  // Resultado: el puntaje de cada uno = la mejor predicción que hizo de cada partido,
+  // sin importar en qué torneo la cargó. Robusto ante cualquier reparto de datos.
+  const byUser = {};
   for (const p of (_globalPredictions || [])) {
-    const tid = p.tournament_id || 'null';
-    const u = byUserTor[p.user_id] || (byUserTor[p.user_id] = {});
-    (u[tid] || (u[tid] = {}))[p.match_id] = { local: p.goals_local, visit: p.goals_visit };
+    const u = byUser[p.user_id] || (byUser[p.user_id] = {});
+    const pred = { local: p.goals_local, visit: p.goals_visit };
+    const prev = u[p.match_id];
+    if (!prev) { u[p.match_id] = pred; continue; }
+    const res = results[p.match_id];                       // si predijo el mismo partido 2 veces,
+    if (res && calcScore(pred, res) > calcScore(prev, res)) u[p.match_id] = pred;  // quedarse con la mejor
   }
   return participants.map(p => {
-    const tors = byUserTor[p.id] || {};
-    // Por el lío de torneos divididos: a cada usuario le contamos su MEJOR torneo
-    // (el de más puntos en general), así nadie pierde puntos por problemas de carga.
-    let bestMp = {}, bestTotal = -1;
-    for (const tid of Object.keys(tors)) {
-      const t = scoreOfPreds(tors[tid], results, null).total;
-      if (t > bestTotal) { bestTotal = t; bestMp = tors[tid]; }
-    }
-    const sc = scoreOfPreds(bestMp, results, jornadaFiltro);
+    const mp = byUser[p.id] || {};
+    const sc = scoreOfPreds(mp, results, jornadaFiltro);
     let total = sc.total;
     if (!jornadaFiltro) total += prodeBonus(p);
-    const predCount = Object.keys(bestMp).length;
+    const predCount = Object.keys(mp).length;             // total de partidos pronosticados (unión de torneos), sobre 72
     return { ...p, total, exact: sc.exact, partial: sc.partial, zero: sc.played - sc.exact - sc.partial, played: sc.played, predCount };
   }).sort((a, b) => b.total - a.total || b.exact - a.exact || b.partial - a.partial || a.nombre.localeCompare(b.nombre));
 }
@@ -4202,6 +4202,12 @@ function gdtEditJornada() {
   for (const j of [1, 2, 3]) if (Date.now() < gdtJornadaStart(j)) return j;
   return null;
 }
+// Fecha "actual": la última que ya arrancó (la que se está jugando). Si ninguna arrancó, 1.
+function gdtCurrentJornada() {
+  let cur = 1;
+  for (const j of [1, 2, 3]) if (gdtJornadaStart(j) <= Date.now()) cur = j;
+  return cur;
+}
 function gdtMatchJornada(matchId) {
   for (const g of Object.values(FIXTURE)) {
     const p = g.partidos.find(x => x.id === matchId);
@@ -5040,7 +5046,7 @@ function renderGDTAdminStats() {
 // ============================================================
 // GRAN DT — EQUIPO DE LA FECHA
 // ============================================================
-let _totwJornada = 1;
+let _totwJornada = gdtCurrentJornada();   // arranca en la fecha actual, no clavado en la 1
 
 // Mejor 11 de la jornada según puntos GDT, respetando GDT_LIMITS
 function calcTeamOfWeek(j) {
@@ -5079,9 +5085,14 @@ function calcTeamOfWeek(j) {
 
 function renderTeamOfWeek(j) {
   _totwJornada = j;
+  const cur = gdtCurrentJornada();
   [1,2,3].forEach(n => {
     const b = document.getElementById('totw-j'+n);
-    if (b) { b.classList.toggle('btn-gold', n === j); b.classList.toggle('btn-ghost', n !== j); }
+    if (b) {
+      b.classList.toggle('btn-gold', n === j);
+      b.classList.toggle('btn-ghost', n !== j);
+      b.textContent = 'Fecha ' + n + (n === cur ? ' • actual' : '');   // marca cuál es la fecha en juego
+    }
   });
   const el = document.getElementById('totw-container');
   if (!el) return;
