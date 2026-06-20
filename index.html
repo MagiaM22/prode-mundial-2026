@@ -748,7 +748,8 @@
     .gdt-field {
       position: relative;
       width: 100%;
-      aspect-ratio: 2;
+      aspect-ratio: 1.5;          /* antes 2 → quedaba muy baja y los defensores se solapaban */
+      max-height: 520px;
       background: linear-gradient(135deg, #2d8a5f 0%, #1f7a4f 50%, #2d8a5f 100%);
       border: 3px solid var(--secondary);
       border-radius: 8px;
@@ -792,8 +793,8 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      width: 70px;
-      height: 70px;
+      width: 58px;
+      height: 58px;
       transform: translate(-50%, -50%);
       background: rgba(0,0,0,0.4);
       border: 2.5px solid var(--secondary);
@@ -857,6 +858,9 @@
     @media (max-width: 560px) {
       .totw-pts { width: 30px; height: 30px; font-size: 0.8rem; }
       .totw-name { font-size: 0.56rem; max-width: 70px; }
+      .gdt-field-player { width: 48px; height: 48px; font-size: 0.66rem; }
+      .gdt-field-player .num { font-size: 0.62rem; }
+      .gdt-field-player .name { font-size: 0.5rem; }
     }
   </style>
 </head>
@@ -1334,7 +1338,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-20a';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-20b';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -2239,6 +2243,9 @@ function renderResultsSection() {
   renderResultsAdmin();
 }
 
+let _resAdminJornada = gdtCurrentJornada();   // admin arranca en la fecha actual; null = todas
+function setResAdminJornada(j) { _resAdminJornada = j; renderResultsAdmin(); }
+
 function renderResultsAdmin() {
   const results = _results || {};
   const loaded  = Object.keys(results).length;
@@ -2250,15 +2257,27 @@ function renderResultsAdmin() {
   const keyInput = document.getElementById('api-key-input');
   if (keyInput && savedKey && !keyInput.value) keyInput.value = savedKey;
 
-  let html = '';
+  const jf  = _resAdminJornada;                 // null = todas; 1/2/3 = filtra por fecha
+  const cur = gdtCurrentJornada();
+  const fechaCount = j => {                      // "X/24 cargados" de esa fecha
+    let n = 0, t = 0;
+    for (const g of Object.values(FIXTURE)) for (const p of g.partidos) if (p.jornada === j) { t++; if (results[p.id]) n++; }
+    return `${n}/${t}`;
+  };
+  const tab = (j, label) => `<button class="btn btn-sm ${jf===j?'btn-gold':'btn-ghost'}" onclick="setResAdminJornada(${j===null?'null':j})">${label}</button>`;
+  let html = `<div class="flex-gap" style="margin-bottom:0.85rem;flex-wrap:wrap;align-items:center">
+    ${tab(null,'🗓️ Todas')}${tab(1,'Fecha 1 '+fechaCount(1))}${tab(2,'Fecha 2 '+fechaCount(2)+(cur===2?' • actual':''))}${tab(3,'Fecha 3 '+fechaCount(3)+(cur===3?' • actual':''))}
+  </div>`;
   for (const [gk, group] of Object.entries(FIXTURE)) {
-    const groupLoaded = group.partidos.filter(p => results[p.id]).length;
+    const partidos = group.partidos.filter(p => jf === null || p.jornada === jf);
+    if (!partidos.length) continue;
+    const groupLoaded = partidos.filter(p => results[p.id]).length;
     html += `<div class="group-card">
       <div class="group-header">
         <h3>${group.flag} ${group.nombre}</h3>
-        <span style="font-size:0.72rem;color:rgba(255,255,255,0.5)">${groupLoaded}/6 cargados</span>
+        <span style="font-size:0.72rem;color:rgba(255,255,255,0.5)">${groupLoaded}/${partidos.length} cargados</span>
       </div>`;
-    for (const p of group.partidos) {
+    for (const p of partidos) {
       const local  = group.equipos[p.local];
       const visit  = group.equipos[p.visit];
       const result = results[p.id] || {};
@@ -4423,51 +4442,20 @@ const GDT_FIELD_SVG = `
         <line x1="0" y1="100" x2="200" y2="100" stroke="rgba(255,255,255,0.2)" stroke-width="0.5"/>
       </svg>`;
 
-// Posiciones (left/top en %) de cada jugador en la cancha según su línea
+// Posiciones (left/top en %) de cada jugador en la cancha (horizontal: arquero a la izq, delanteros a la der).
+// Cada línea es una columna; los jugadores se reparten parejos en vertical usando casi toda la altura.
 function gdtFieldLayout(byPos) {
+  const spread = n => {                       // n posiciones verticales bien distribuidas (deja margen arriba/abajo)
+    if (n <= 1) return [50];
+    const top = 14, bot = 86, step = (bot - top) / (n - 1);
+    return Array.from({ length: n }, (_, i) => Math.round(top + step * i));
+  };
+  const col = (arr, left) => { const ts = spread(arr.length); return arr.map((p, i) => ({ ...p, left, top: ts[i] })); };
   return [
-    ...byPos.GK.map(p => ({...p, left: 8, top: 50})),
-    ...byPos.DEF.map((p, i) => {
-      const cnt = byPos.DEF.length;
-      let top;
-      if (cnt === 5) top = [20, 35, 50, 65, 80][i];
-      else if (cnt === 4) top = [25, 40, 60, 75][i];
-      else if (cnt === 3) top = [30, 50, 70][i];
-      else top = 20 + (60 / (cnt + 1)) * (i + 1);
-      return {...p, left: 22, top};
-    }),
-    ...byPos.MED.map((p, i) => {
-      const cnt = byPos.MED.length;
-      let left, top;
-      if (cnt === 5) {
-        left = [45, 45, 45, 50, 50][i];
-        top = [25, 50, 75, 35, 65][i];
-      } else if (cnt === 4) {
-        left = [45, 45, 50, 50][i];
-        top = [30, 70, 20, 80][i];
-      } else if (cnt === 3) {
-        left = [48, 50, 48][i];
-        top = [30, 50, 70][i];
-      } else if (cnt === 2) {
-        left = [48, 48][i];
-        top = [35, 65][i];
-      } else {
-        left = 48; top = 50;
-      }
-      return {...p, left, top};
-    }),
-    ...byPos.DEL.map((p, i) => {
-      const cnt = byPos.DEL.length;
-      let top;
-      if (cnt === 3) {
-        top = [30, 50, 70][i];
-      } else if (cnt === 2) {
-        top = [35, 65][i];
-      } else {
-        top = 50;
-      }
-      return {...p, left: 78, top};
-    })
+    ...col(byPos.GK,  7),
+    ...col(byPos.DEF, 27),
+    ...col(byPos.MED, 50),
+    ...col(byPos.DEL, 73),
   ];
 }
 
