@@ -1338,7 +1338,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-20d';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-20e';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -2353,6 +2353,7 @@ function calcScore(pred, result) {
 // Ajustes manuales de puntos para el prode (ej. bonus por VAR 😂). Se suman al total.
 const PRODE_BONUS = [
   { match: 'mariana', puntos: 3 },   // Mariana — 3 por VAR (pronósticos que no se guardaron)
+  { match: 'fefino',  puntos: 1 },   // Fefiño — 1 por Países Bajos–Suecia: puso 3-1 (resultado 5-1, acertó ganador) y no se le guardó
 ];
 function prodeBonus(p) {
   const txt = gdtSlug(p.nombre || '') + ' ' + gdtSlug(p.alias || '');
