@@ -1338,7 +1338,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-20b';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-20c';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -4958,35 +4958,43 @@ function renderGDTLeaderboard() {
 // ============================================================
 // GRAN DT — ADMIN STATS
 // ============================================================
+let _gdtAdminJornada = gdtCurrentJornada();   // arranca en la fecha actual; null = todas
+function setGdtAdminJornada(j) { _gdtAdminJornada = j; renderGDTAdminStats(); }
+
 function renderGDTAdminStats() {
   if (!isAdmin) return;
   const results   = _results || {};
   const container = document.getElementById('gdt-admin-matches');
   if (!container) return;
 
-  const matchesWithResults = [];
+  const jf  = _gdtAdminJornada;                 // null = todas; 1/2/3 = filtra por fecha
+  const cur = gdtCurrentJornada();
+
+  // TODOS los partidos de la fecha (tengan o no resultado cargado): el Sync los trae de ESPN igual.
+  const matches = [];
   for (const [gk, group] of Object.entries(FIXTURE)) {
     for (const p of group.partidos) {
-      if (results[p.id]) {
-        matchesWithResults.push({
-          id: p.id, flag: group.flag, grupo: group.nombre,
-          home: group.equipos[p.local], away: group.equipos[p.visit],
-          res: results[p.id]
-        });
-      }
+      if (jf !== null && p.jornada !== jf) continue;
+      matches.push({ id: p.id, jornada: p.jornada, flag: group.flag, grupo: group.nombre,
+        home: group.equipos[p.local], away: group.equipos[p.visit], res: results[p.id] || null });
     }
   }
 
-  if (!matchesWithResults.length) {
-    container.innerHTML = `<div class="empty-state"><div class="icon">⚽</div><h3>Sin resultados cargados</h3><p>Cargá resultados primero en "Resultados".</p></div>`;
-    return;
-  }
+  const syncedCount = j => {                     // "X/24 con stats" de esa fecha
+    let n = 0, t = 0;
+    for (const g of Object.values(FIXTURE)) for (const p of g.partidos) if (p.jornada === j) { t++; if ((_gdtMatchStats?.[p.id] || []).length) n++; }
+    return `${n}/${t}`;
+  };
+  const tab = (j, label) => `<button class="btn btn-sm ${jf===j?'btn-gold':'btn-ghost'}" onclick="setGdtAdminJornada(${j===null?'null':j})">${label}</button>`;
+  const selector = `<div class="flex-gap" style="margin-bottom:0.85rem;flex-wrap:wrap;align-items:center">
+    ${tab(null,'🗓️ Todas')}${tab(1,'Fecha 1 '+syncedCount(1))}${tab(2,'Fecha 2 '+syncedCount(2)+(cur===2?' • actual':''))}${tab(3,'Fecha 3 '+syncedCount(3)+(cur===3?' • actual':''))}
+  </div>`;
 
   // slug → jugador GDT, para calcular el puntaje de cada fila
   const slugIndex = {};
   for (const p of GDT_PLAYERS) slugIndex[gdtSlug(p.nombre)] = p;
 
-  container.innerHTML = matchesWithResults.map(m => {
+  container.innerHTML = selector + matches.map(m => {
     const stats  = _gdtMatchStats?.[m.id] || [];
     const synced = stats.length > 0;
 
@@ -5012,14 +5020,15 @@ function renderGDTAdminStats() {
         <thead><tr><th style="text-align:left">Jugador</th><th style="text-align:left">Selección</th>
         <th>⚽</th><th>🅰</th><th>🟨</th><th>🟥</th><th>AG</th><th>⏱</th><th>Nota</th><th>★</th><th>Pts</th></tr></thead>
         <tbody>${rows}</tbody></table>`
-      : '<div style="font-size:0.8rem;color:var(--text-muted);padding:0.4rem 0">Sin estadísticas sincronizadas — tocá "Sync stats".</div>';
+      : '<div style="font-size:0.8rem;color:var(--text-muted);padding:0.4rem 0">Sin estadísticas — tocá "📡 Sync stats" para traerlas de ESPN.</div>';
 
+    const score = m.res ? `${m.res.local}–${m.res.visit}` : '<span style="color:var(--text-muted)">vs</span>';
     return `<details class="gdt-admin-match" ${synced ? '' : 'open'}>
       <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem">
         <div>
           <span style="color:var(--text-muted);font-size:0.85rem;margin-right:0.4rem">▸</span>
-          <span class="mcm-group" style="margin-right:0.5rem">${m.flag} ${m.grupo}</span>
-          <strong>${esc(m.home)}</strong> ${m.res.local}–${m.res.visit} <strong>${esc(m.away)}</strong>
+          <span class="mcm-group" style="margin-right:0.5rem">${m.flag} J${m.jornada}</span>
+          <strong>${esc(m.home)}</strong> ${score} <strong>${esc(m.away)}</strong>
         </div>
         <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
           ${synced ? `<span style="color:var(--success);font-size:0.78rem">✅ ${stats.length} jug.</span>` : '<span style="color:var(--warning);font-size:0.78rem">sin stats</span>'}
