@@ -1338,7 +1338,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-20c';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-20d';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -4251,10 +4251,82 @@ let _gdtSwapOut    = null;
 // ============================================================
 function gdtPlayerById(id) { return GDT_PLAYERS.find(p => p.id === id); }
 function gdtSlug(str) {
-  return String(str||'').toLowerCase()
+  return String(str||'').toLowerCase().replace(/ı/g,'i')
     .normalize('NFD').replace(/[̀-ͯ]/g,'')
     .replace(/[^a-z0-9\s]/g,'').replace(/\s+/g,' ').trim();
 }
+// ── Matcheo robusto nombre ESPN ↔ jugador de la base ──────────────────────────
+// ESPN suele mandar nombres más largos o con guiones ("Vinícius Júnior" vs "Vinicius Jr.",
+// "Al-Amri" vs "Al Amri") y por eso muchos no puntuaban. Tokenizamos sin partículas ni
+// acentos, tratando jr≡junior y guion≡espacio, y matcheamos por selección.
+const _GDT_PARTICULAS = new Set(['al','el','de','da','do','dos','del','di','la','le','bin','ibn','van','von','do']);
+function gdtNameTokens(name) {
+  return String(name || '').toLowerCase().replace(/ı/g, 'i')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ').trim().split(' ')      // cualquier separador (espacio, guion, punto) → token
+    .map(t => (t === 'jr' || t === 'jnr') ? 'junior' : t)
+    .filter(t => t && !_GDT_PARTICULAS.has(t));
+}
+// ¿Misma selección? (tolera abreviaturas tipo "Bosnia y Herz." vs "Bosnia y Herzegovina")
+function gdtSameTeam(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const x = gdtSlug(a), y = gdtSlug(b);
+  return !!x && !!y && (x === y || x.startsWith(y) || y.startsWith(x));
+}
+function _lev(a, b) {
+  const m = a.length, n = b.length, d = Array.from({length:m+1}, (_,i)=>[i,...Array(n).fill(0)]);
+  for (let j=1;j<=n;j++) d[0][j]=j;
+  for (let i=1;i<=m;i++) for (let j=1;j<=n;j++)
+    d[i][j] = Math.min(d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));
+  return d[m][n];
+}
+// ¿Nombres de pila compatibles? (diminutivos/romanizaciones: prefijo, prefijo común ≥3, o distancia ≤2)
+function gdtFirstNamesCompat(a, b) {
+  if (!a.length || !b.length) return true;   // si a uno le falta el nombre de pila, no bloquea
+  for (const x of a) for (const y of b) {
+    if (x === y) return true;
+    if ((x.startsWith(y) || y.startsWith(x)) && Math.min(x.length,y.length) >= 2) return true;
+    let k = 0; while (k < x.length && k < y.length && x[k] === y[k]) k++;
+    if (k >= 3) return true;
+    if (Math.max(x.length,y.length) >= 4 && _lev(x,y) <= 2) return true;
+  }
+  return false;
+}
+// Puntaje de compatibilidad entre una fila de stats y un jugador de la base (0 = no matchea).
+// Precisión > recall: NUNCA matchea entre selecciones distintas (evita homónimos tipo
+// "Emiliano Martínez" Uruguay vs Argentina). "Mismo apellido" exige nombre de pila compatible.
+function gdtMatchScore(s, player) {
+  if (!s || !player) return 0;
+  if (!gdtSameTeam(s.team || '', player.seleccion)) return 0;        // SIEMPRE misma selección
+  const sName = s.player_name || s.player_slug || '';
+  if (gdtSlug(sName) === gdtSlug(player.nombre || '')) return 1000;  // match exacto por slug
+  const st = gdtNameTokens(sName), pt = gdtNameTokens(player.nombre || '');
+  if (!st.length || !pt.length) return 0;
+  const stSet = new Set(st);
+  const inter = pt.filter(t => stSet.has(t)).length;
+  if (!inter) return 0;
+  const subset      = inter === pt.length || inter === st.length;     // uno contenido en el otro
+  const sameSurname = pt[pt.length - 1] === st[st.length - 1];        // mismo apellido (último token)
+  if (subset) return 100 + inter * 10;                               // ej. "Alisson" ⊆ "Alisson Becker"
+  if (sameSurname && gdtFirstNamesCompat(pt.slice(0, -1), st.slice(0, -1)))
+    return 60 + inter * 10;                                          // ej. "Gio Reyna" ≈ "Giovanni Reyna"
+  return 0;
+}
+// Stat de un jugador en un partido (la mejor coincidencia de la lista).
+function gdtStatForPlayer(player, statsList) {
+  if (!statsList || !player) return null;
+  let best = null, bestScore = 0;
+  for (const s of statsList) { const sc = gdtMatchScore(s, player); if (sc > bestScore) { bestScore = sc; best = s; } }
+  return best;
+}
+// Jugador de la base que corresponde a una fila de stats (la mejor coincidencia).
+function gdtPlayerForStat(s) {
+  let best = null, bestScore = 0;
+  for (const p of GDT_PLAYERS) { const sc = gdtMatchScore(s, p); if (sc > bestScore) { bestScore = sc; best = p; } }
+  return best;
+}
+
 function gdtBudgetUsed() {
   const s = _gdtLineup.reduce((s,id) => { const p=gdtPlayerById(id); return s+(p?p.precio:0); }, 0);
   const b = _gdtBench.reduce((s,id)  => { const p=gdtPlayerById(id); return s+(p?p.precio:0); }, 0);
@@ -4811,7 +4883,7 @@ function calcGDTMatchPoints(playerId, matchId, captainId) {
   const statsList = _gdtMatchStats?.[matchId];
   if (!statsList)  return 0;
   const pts  = GDT_PTS[player.pos];
-  const stat = statsList.find(s => s.player_slug === gdtSlug(player.nombre));
+  const stat = gdtStatForPlayer(player, statsList);
   if (!stat) return 0;
   let total = 0;
   if (stat.goals        > 0) total += pts.goal   * stat.goals;
@@ -4842,7 +4914,7 @@ function gdtPlayerPlayed(playerId, matchId) {
   if (!player) return false;
   const statsList = _gdtMatchStats?.[matchId];
   if (!statsList) return false;
-  const stat = statsList.find(s => s.player_slug === gdtSlug(player.nombre));
+  const stat = gdtStatForPlayer(player, statsList);
   if (!stat) return false;
   return stat.minutes_played > 0 || stat.goals > 0 || stat.assists > 0 || stat.is_mvp;
 }
@@ -5000,7 +5072,7 @@ function renderGDTAdminStats() {
 
     // Puntaje GDT por jugador y orden de mayor a menor
     const conPts = stats.map(s => {
-      const p = slugIndex[s.player_slug];
+      const p = slugIndex[s.player_slug] || gdtPlayerForStat(s);
       const pts = p ? calcGDTMatchPoints(p.id, m.id, null) : null;
       return { s, pts };
     }).sort((a, b) => (b.pts ?? -99) - (a.pts ?? -99));
@@ -5059,7 +5131,7 @@ function calcTeamOfWeek(j) {
       if (!statsList) continue;
       matchesConStats++;
       for (const s of statsList) {
-        const p = slugIndex[s.player_slug];
+        const p = slugIndex[s.player_slug] || gdtPlayerForStat(s);
         if (!p) continue;
         const pts  = calcGDTMatchPoints(p.id, partido.id, null);
         const prev = byId.get(p.id);
