@@ -1338,7 +1338,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-20e';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-22a';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -4541,12 +4541,23 @@ function renderGDTField() {
     return;
   }
 
-  // Puntos de la fecha actual de cada jugador del usuario
+  // Puntos de la fecha actual (totales con suplentes → footer)
   const jornadaActual = gdtCurrentJornada();
-  const score   = currentUser ? calcGDTUserScore(currentUser.id, jornadaActual) : { playerPts: [] };
+  const score      = currentUser ? calcGDTUserScore(currentUser.id, jornadaActual) : { total: 0 };
   const scoreTotal = currentUser ? calcGDTUserScore(currentUser.id) : { total: 0 };
+  // Puntos propios de cada titular (0 si su selección no jugó aún, sin entrar suplentes)
   const ptsById = {};
-  (score.playerPts || []).forEach(p => { ptsById[p.id] = p.pts; });
+  if (currentUser) {
+    const team = _gdtAllTeams?.[currentUser.id];
+    const tj   = team ? gdtTeamForJornada(team, jornadaActual) : null;
+    const captainId = tj?.captain_id;
+    const jm   = gdtJornadaMatchIds(jornadaActual);
+    (_gdtLineup || []).forEach(pid => {
+      ptsById[pid] = (jm.length && gdtPlayedInMatches(pid, jm))
+        ? gdtPointsInMatches(pid, jm, captainId)
+        : 0;
+    });
+  }
 
   const byPos = { GK: [], DEF: [], MED: [], DEL: [] };
   _gdtLineup.forEach(pid => {
