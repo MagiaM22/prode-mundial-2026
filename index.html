@@ -4541,8 +4541,10 @@ function renderGDTField() {
     return;
   }
 
-  // Puntos acumulados de cada jugador del usuario
-  const score   = currentUser ? calcGDTUserScore(currentUser.id) : { playerPts: [] };
+  // Puntos de la fecha actual de cada jugador del usuario
+  const jornadaActual = gdtCurrentJornada();
+  const score   = currentUser ? calcGDTUserScore(currentUser.id, jornadaActual) : { playerPts: [] };
+  const scoreTotal = currentUser ? calcGDTUserScore(currentUser.id) : { total: 0 };
   const ptsById = {};
   (score.playerPts || []).forEach(p => { ptsById[p.id] = p.pts; });
 
@@ -4554,18 +4556,22 @@ function renderGDTField() {
     if (byPos[p.pos]) byPos[p.pos].push(playerData);
   });
 
-  const totalPts = (score.total ?? 0);
+  const totalPts   = (scoreTotal.total ?? 0);
+  const jornadaPts = (score.total ?? 0);
   const fieldHTML = `
     <div class="gdt-field">
       ${GDT_FIELD_SVG}
       ${gdtFieldLayout(byPos).map(p => `
-        <div class="totw-player" style="left:${p.left}%;top:${p.top}%" title="${esc(p.nombre)} (${esc(p.seleccion)})${p.isCaptain ? ' — Capitán ×2' : ''} · ${p.pts} pts">
+        <div class="totw-player" style="left:${p.left}%;top:${p.top}%" title="${esc(p.nombre)} (${esc(p.seleccion)})${p.isCaptain ? ' — Capitán ×2' : ''} · ${p.pts} pts Fecha ${jornadaActual}">
           <div class="totw-pts ${p.isCaptain ? 'totw-cap' : ''}">${p.pts}</div>
           <div class="totw-name">${p.flag} ${esc(gdtFieldName(p.nombre))}</div>
         </div>`).join('')}
     </div>
     <div style="margin-top:0.9rem;text-align:center;font-size:0.85rem;color:var(--text-muted)">
-      Formación ${byPos.DEF.length}-${byPos.MED.length}-${byPos.DEL.length} · <strong style="color:var(--secondary)">${totalPts} pts</strong> · el número en el círculo son los puntos del jugador
+      Formación ${byPos.DEF.length}-${byPos.MED.length}-${byPos.DEL.length} ·
+      <strong style="color:var(--secondary)">Fecha ${jornadaActual}: ${jornadaPts} pts</strong>
+      <span style="margin:0 0.4rem">·</span>
+      Total: <strong style="color:var(--text)">${totalPts} pts</strong>
     </div>
   `;
   container.innerHTML = fieldHTML;
