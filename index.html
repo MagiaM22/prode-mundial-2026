@@ -1338,7 +1338,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-24e';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-24f';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -4203,6 +4203,15 @@ const GDT_FIX_CHANGES = 6;   // tope de cambios para arreglar un equipo roto (po
 // El tope de 3 cambios por fecha aplica DESDE esta jornada. La Fecha 3 quedó libre
 // (la gente ya venía editando sin tope); de la Fecha 4 en adelante: máximo 3 cambios.
 const GDT_SWAP_ENFORCE_FROM = 4;
+
+// Selecciones ELIMINADAS del torneo (lista MANUAL). Sus jugadores no puntúan y hay que
+// reemplazarlos (el reemplazo es gratis, no gasta cambios). Agregar acá cuando una queda
+// afuera. Los nombres deben coincidir EXACTO con 'seleccion' de GDT_PLAYERS.
+// Ej.: const GDT_ELIMINADAS = ['Sudáfrica', 'Catar'];
+const GDT_ELIMINADAS = [];
+function gdtIsEliminado(p) { return !!p && GDT_ELIMINADAS.includes(p.seleccion); }
+function gdtSquadEliminados() { return [..._gdtLineup, ..._gdtBench].filter(id => gdtIsEliminado(gdtPlayerById(id))); }
+const GDT_ELIM_BADGE = ' <span style="color:#ff6b6b;font-weight:700;font-size:0.6rem;background:rgba(255,107,107,0.14);padding:1px 5px;border-radius:4px">AFUERA</span>';
 let _gdtTransfers  = { fixSeen: false, snap: {} };
 // Normaliza el formato guardado. snap = equipos por jornada (override del base):
 // { "2": {lineup,bench,captain_id}, "3": {...} }. La Fecha 1 vive en el top-level del registro.
@@ -4354,6 +4363,8 @@ function gdtValidate() {
     if (cnt > lim.max) msgs.push(`Demasiados ${pos} (máx ${lim.max})`);
   }
   if (!_gdtCaptainId || !_gdtLineup.includes(_gdtCaptainId)) msgs.push('Elegí un capitán entre los titulares (☆)');
+  const elim = gdtSquadEliminados();
+  if (elim.length) msgs.push(`Reemplazá ${elim.length} jugador(es) de selecciones eliminadas (marcados AFUERA)`);
   return msgs;
 }
 
@@ -4370,19 +4381,26 @@ function getTransferWindow() {
 // respecto del de la fecha anterior. Base del tope de 3 cambios por fecha.
 function gdtChangesVsPrev(ej) {
   const prev = gdtTeamForJornada({ ..._gdtBaseTeam, transfers: _gdtTransfers }, ej - 1);
-  const prevSquad = new Set([...(prev.lineup || []), ...(prev.bench || [])]);
-  if (prevSquad.size === 0) return 0;   // primer equipo (no tenía nada antes) → sin tope
-  return [..._gdtLineup, ..._gdtBench].filter(id => !prevSquad.has(id)).length;
+  const prevSquad = [...(prev.lineup || []), ...(prev.bench || [])];
+  if (!prevSquad.length) return 0;      // primer equipo (no tenía nada antes) → sin tope
+  const prevSet = new Set(prevSquad);
+  const altas  = [..._gdtLineup, ..._gdtBench].filter(id => !prevSet.has(id)).length;  // jugadores nuevos
+  // los eliminados que estaban en el equipo anterior son baja OBLIGATORIA → su reemplazo NO cuenta
+  const forzados = prevSquad.filter(id => gdtIsEliminado(gdtPlayerById(id))).length;
+  return Math.max(0, altas - forzados);
 }
 
 function renderTransferStatus() {
   const el = document.getElementById('gdt-transfer-status');
   if (!el) return;
   const ej = gdtEditJornada();
+  const elimN = gdtSquadEliminados().length;
+  const elimWarn = elimN ? `<span class="tw-badge" style="display:block;margin-bottom:0.4rem;background:rgba(255,107,107,0.15);color:#ff6b6b;border:1px solid rgba(255,107,107,0.5)">⚠️ Tenés <b>${elimN}</b> jugador(es) de selecciones <b>eliminadas</b> — reemplazalos (es gratis, no gasta tus cambios)</span>` : '';
+  let base;
   if (ej === null) {
-    el.innerHTML = `<span class="tw-badge tw-locked">🔒 Las fechas ya empezaron — equipo bloqueado</span>`;
+    base = `<span class="tw-badge tw-locked">🔒 Las fechas ya empezaron — equipo bloqueado</span>`;
   } else if (ej === 1) {
-    el.innerHTML = `<span class="tw-badge tw-free">🆓 Edición libre — armá tu equipo (aplica desde la Fecha 1)</span>`;
+    base = `<span class="tw-badge tw-free">🆓 Edición libre — armá tu equipo (aplica desde la Fecha 1)</span>`;
   } else {
     let extra = '';
     if (ej >= GDT_SWAP_ENFORCE_FROM) {
@@ -4391,8 +4409,9 @@ function renderTransferStatus() {
       const col = usados > GDT_SWAPS_PER_WINDOW ? '#ff6b6b' : '#7fd17f';
       extra = ` <b style="color:${col}">Cambios: ${usados}/${GDT_SWAPS_PER_WINDOW}</b> (te quedan ${quedan}).`;
     }
-    el.innerHTML = `<span class="tw-badge" style="background:rgba(88,166,255,0.15);color:#58a6ff;border:1px solid rgba(88,166,255,0.45)">✏️ Estás editando tu equipo para la <b>Fecha ${ej}</b>. Tus puntos de las fechas anteriores no se tocan. Podés cambiar hasta que empiece la Fecha ${ej}.${extra}</span>`;
+    base = `<span class="tw-badge" style="background:rgba(88,166,255,0.15);color:#58a6ff;border:1px solid rgba(88,166,255,0.45)">✏️ Estás editando tu equipo para la <b>Fecha ${ej}</b>. Tus puntos de las fechas anteriores no se tocan. Podés cambiar hasta que empiece la Fecha ${ej}.${extra}</span>`;
   }
+  el.innerHTML = elimWarn + base;
 }
 
 function startSwapMode() {
@@ -4674,7 +4693,7 @@ function renderGDTTeamSlots() {
         <span class="gdt-slot-flag">${p.flag}</span>
         <div class="gdt-slot-info">
           <div class="gdt-slot-name">${esc(p.nombre)}${isOut ? ' <span style="color:#ff6b6b;font-size:0.72rem">← salida</span>' : ''}</div>
-          <div class="gdt-slot-sub">${esc(p.seleccion)}</div>
+          <div class="gdt-slot-sub">${esc(p.seleccion)}${gdtIsEliminado(p) ? GDT_ELIM_BADGE : ''}</div>
         </div>
         <span class="gdt-slot-price">${p.precio}🪙</span>
         ${!_gdtSwapMode ? `<span class="gdt-slot-cap ${cap?'active':''}" title="${cap?'Quitar capitán':'Hacer capitán'}" onclick="setGDTCaptain('${pid}')">${cap?'★':'☆'}</span>` : ''}
@@ -4697,7 +4716,7 @@ function renderGDTTeamSlots() {
       <span class="gdt-slot-flag">${p.flag}</span>
       <div class="gdt-slot-info">
         <div class="gdt-slot-name">${esc(p.nombre)} <span class="gdt-pool-pos ${posClass[p.pos]}" style="font-size:0.62rem;vertical-align:middle">${p.pos}</span></div>
-        <div class="gdt-slot-sub">${esc(p.seleccion)}</div>
+        <div class="gdt-slot-sub">${esc(p.seleccion)}${gdtIsEliminado(p) ? GDT_ELIM_BADGE : ''}</div>
       </div>
       <span class="gdt-slot-price">${p.precio}🪙</span>
       <span class="gdt-slot-remove" onclick="removeGDTPlayer('${pid}',true)">✕</span>
@@ -4767,18 +4786,20 @@ function renderGDTPool() {
     }
 
     // Modo normal
+    const elim = gdtIsEliminado(p);
     const canStarter = _gdtLineup.length < GDT_SQUAD_SIZE && gdtCountByPos(p.pos) < GDT_LIMITS[p.pos].max;
     const canBench   = _gdtBench.length < GDT_BENCH_SIZE;
     const wouldExceed = !isSelected && ((!canStarter && !canBench) || budget + p.precio > GDT_BUDGET);
-    const cls = isSelected ? 'selected' : (wouldExceed ? 'disabled' : '');
-    return `<div class="gdt-pool-item ${cls}" onclick="toggleGDTPlayer('${p.id}')">
+    const cls = isSelected ? 'selected' : ((wouldExceed || elim) ? 'disabled' : '');
+    const click = elim ? '' : `onclick="toggleGDTPlayer('${p.id}')"`;
+    return `<div class="gdt-pool-item ${cls}" ${click}>
       <span class="gdt-pool-flag">${p.flag}</span>${gdtContinentBadge(p.seleccion)}
       <div class="gdt-pool-info">
         <div class="gdt-pool-name">${esc(p.nombre)}</div>
-        <div class="gdt-pool-sel">${esc(p.seleccion)}</div>
+        <div class="gdt-pool-sel">${esc(p.seleccion)}${elim ? GDT_ELIM_BADGE : ''}</div>
       </div>
       <span class="gdt-pool-pos ${posClass[p.pos]}">${p.pos}</span>
-      <span class="gdt-pool-price">${p.precio}🪙</span>
+      <span class="gdt-pool-price">${elim ? '—' : p.precio+'🪙'}</span>
     </div>`;
   }).join('');
 }
@@ -4818,6 +4839,7 @@ function renderGDTRules() {
     • El <b style="color:var(--secondary)">capitán ⭐</b> suma <b>el doble</b> de puntos.<br>
     • Podés editar tu equipo hasta que <b>empieza cada fecha</b>; lo que cambiás aplica a esa fecha (las anteriores quedan congeladas). <b>Desde la Fecha 4: máximo 3 cambios por fecha.</b><br>
     • Si un titular no juega, entra automáticamente un <b>suplente</b> del mismo puesto.<br>
+    • Cuando una <b>selección queda eliminada</b>, sus jugadores salen del juego: hay que <b>reemplazarlos</b> (es gratis, no gasta tus 3 cambios).<br>
     • La <b>valla invicta</b> (puntos para GK y DEF) cuenta solo si tu equipo no recibió goles.</div>`;
   return `<table style="width:100%;border-collapse:collapse;font-size:0.85rem"><thead>${head}</thead><tbody>${body}</tbody></table>${notes}`;
 }
@@ -4845,6 +4867,7 @@ function toggleGDTPlayer(id) {
     _gdtBench.splice(benchIdx, 1);
   } else {
     const p = gdtPlayerById(id); if (!p) return;
+    if (gdtIsEliminado(p)) { showToast(`🚫 ${p.seleccion} quedó afuera del torneo — elegí otro`); return; }
     if (gdtBudgetUsed() + p.precio > GDT_BUDGET) { showToast(`⚠️ Sin fichas (${gdtBudgetUsed()+p.precio} > ${GDT_BUDGET})`); return; }
     const canStarter = _gdtLineup.length < GDT_SQUAD_SIZE && gdtCountByPos(p.pos) < GDT_LIMITS[p.pos].max;
     const canBench   = _gdtBench.length < GDT_BENCH_SIZE;
