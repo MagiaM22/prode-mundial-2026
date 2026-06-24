@@ -1338,7 +1338,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-24d';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-24e';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -4200,6 +4200,9 @@ let _gdtProfiles   = {};   // perfil (nombre/alias) de cada dueño de equipo GDT
 let _gdtBaseTeam   = { lineup: [], bench: [], captain_id: null };  // equipo de la Fecha 1 (base)
 const GDT_SWAPS_PER_WINDOW = 3;
 const GDT_FIX_CHANGES = 6;   // tope de cambios para arreglar un equipo roto (por única vez)
+// El tope de 3 cambios por fecha aplica DESDE esta jornada. La Fecha 3 quedó libre
+// (la gente ya venía editando sin tope); de la Fecha 4 en adelante: máximo 3 cambios.
+const GDT_SWAP_ENFORCE_FROM = 4;
 let _gdtTransfers  = { fixSeen: false, snap: {} };
 // Normaliza el formato guardado. snap = equipos por jornada (override del base):
 // { "2": {lineup,bench,captain_id}, "3": {...} }. La Fecha 1 vive en el top-level del registro.
@@ -4363,6 +4366,14 @@ function getTransferWindow() {
   if (ej === null) return 'locked';
   return ej === 1 ? 'pre' : 'open';
 }
+// Cuántos cambios tiene el equipo en edición (jugadores nuevos en el plantel de 15)
+// respecto del de la fecha anterior. Base del tope de 3 cambios por fecha.
+function gdtChangesVsPrev(ej) {
+  const prev = gdtTeamForJornada({ ..._gdtBaseTeam, transfers: _gdtTransfers }, ej - 1);
+  const prevSquad = new Set([...(prev.lineup || []), ...(prev.bench || [])]);
+  if (prevSquad.size === 0) return 0;   // primer equipo (no tenía nada antes) → sin tope
+  return [..._gdtLineup, ..._gdtBench].filter(id => !prevSquad.has(id)).length;
+}
 
 function renderTransferStatus() {
   const el = document.getElementById('gdt-transfer-status');
@@ -4373,7 +4384,14 @@ function renderTransferStatus() {
   } else if (ej === 1) {
     el.innerHTML = `<span class="tw-badge tw-free">🆓 Edición libre — armá tu equipo (aplica desde la Fecha 1)</span>`;
   } else {
-    el.innerHTML = `<span class="tw-badge" style="background:rgba(88,166,255,0.15);color:#58a6ff;border:1px solid rgba(88,166,255,0.45)">✏️ Estás editando tu equipo para la <b>Fecha ${ej}</b>. Tus puntos de las fechas anteriores no se tocan. Podés cambiar hasta que empiece la Fecha ${ej}.</span>`;
+    let extra = '';
+    if (ej >= GDT_SWAP_ENFORCE_FROM) {
+      const usados = gdtChangesVsPrev(ej);
+      const quedan = Math.max(0, GDT_SWAPS_PER_WINDOW - usados);
+      const col = usados > GDT_SWAPS_PER_WINDOW ? '#ff6b6b' : '#7fd17f';
+      extra = ` <b style="color:${col}">Cambios: ${usados}/${GDT_SWAPS_PER_WINDOW}</b> (te quedan ${quedan}).`;
+    }
+    el.innerHTML = `<span class="tw-badge" style="background:rgba(88,166,255,0.15);color:#58a6ff;border:1px solid rgba(88,166,255,0.45)">✏️ Estás editando tu equipo para la <b>Fecha ${ej}</b>. Tus puntos de las fechas anteriores no se tocan. Podés cambiar hasta que empiece la Fecha ${ej}.${extra}</span>`;
   }
 }
 
@@ -4798,7 +4816,7 @@ function renderGDTRules() {
   const notes = `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:0.9rem;line-height:1.6">
     • La <b style="color:var(--secondary)">nota del partido</b> es la base del puntaje; lo demás se suma encima. Si el jugador jugó pero no hay nota disponible, computa <b>6</b>.<br>
     • El <b style="color:var(--secondary)">capitán ⭐</b> suma <b>el doble</b> de puntos.<br>
-    • Entre fecha y fecha tenés <b>3 cambios</b> de titulares (ventanas J2 y J3; cierran 30 min antes del primer partido de cada fecha).<br>
+    • Podés editar tu equipo hasta que <b>empieza cada fecha</b>; lo que cambiás aplica a esa fecha (las anteriores quedan congeladas). <b>Desde la Fecha 4: máximo 3 cambios por fecha.</b><br>
     • Si un titular no juega, entra automáticamente un <b>suplente</b> del mismo puesto.<br>
     • La <b>valla invicta</b> (puntos para GK y DEF) cuenta solo si tu equipo no recibió goles.</div>`;
   return `<table style="width:100%;border-collapse:collapse;font-size:0.85rem"><thead>${head}</thead><tbody>${body}</tbody></table>${notes}`;
@@ -4860,6 +4878,15 @@ async function saveGDTTeam() {
   if (ej === null) { showToast('🔒 Las fechas ya empezaron — no podés cambiar el equipo'); return; }
   const errors = gdtValidate();
   if (errors.length) { showToast('⚠️ ' + errors[0]); return; }
+
+  // Tope de 3 cambios por fecha (desde la Fecha 4). Se cuenta contra el equipo de la fecha anterior.
+  if (ej >= GDT_SWAP_ENFORCE_FROM) {
+    const cambios = gdtChangesVsPrev(ej);
+    if (cambios > GDT_SWAPS_PER_WINDOW) {
+      showToast(`⚠️ Máximo ${GDT_SWAPS_PER_WINDOW} cambios por fecha — estás haciendo ${cambios}. Deshacé ${cambios - GDT_SWAPS_PER_WINDOW}.`);
+      return;
+    }
+  }
 
   // Fecha 1 = base (top-level); fechas siguientes = override en transfers.snap[ej]
   _gdtTransfers.snap = _gdtTransfers.snap || {};
