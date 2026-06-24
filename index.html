@@ -1338,7 +1338,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-24f';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-24g';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -4491,8 +4491,9 @@ async function loadGDTData() {
     _gdtBaseTeam  = { lineup: [], bench: [], captain_id: null };
     _gdtHasTeam   = false;
   }
-  // Cargar en el estado de edición el equipo de la jornada que se está editando ahora
-  const ej = gdtEditJornada() || 1;
+  // Cargar el equipo a mostrar: el de la fecha que se está editando; si ya está todo
+  // bloqueado, el de la FECHA ACTUAL (no el de la Fecha 1 — ese era el bug del "equipo viejo").
+  const ej = gdtEditJornada() || gdtCurrentJornada();
   const t  = gdtTeamForJornada({ ..._gdtBaseTeam, transfers: _gdtTransfers }, ej);
   _gdtLineup    = [...(t.lineup || [])];
   _gdtBench     = [...(t.bench  || [])];
