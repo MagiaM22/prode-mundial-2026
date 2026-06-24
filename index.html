@@ -1338,10 +1338,10 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-22a';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-24a';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
-const STANDINGS_HIDDEN = false;
+const STANDINGS_HIDDEN = true;
 
 // Anuncio de ganador: lo muestra el botón "Anunciar Ganador" (solo admin). Editar acá.
 // La imagen debe estar en el repo con ese nombre. nombres/sub son texto libre.
@@ -1373,9 +1373,9 @@ function maybeAutoAnnounce(cfg, sectionId) {
   }, 500);
 }
 const STANDINGS_TEASER = `<div class="empty-state" style="padding:2.5rem 1rem;text-align:center">
-  <div style="font-size:3rem;margin-bottom:0.5rem">🏆🔒</div>
-  <h3 style="color:var(--secondary);font-size:1.25rem;margin-bottom:0.6rem">¡Suspenso!</h3>
-  <p style="font-size:0.95rem;line-height:1.55;color:var(--text)">El <b>ganador de la Fecha 1</b> y la <b>tabla general</b><br>se anuncian <b style="color:var(--secondary)">muy pronto</b>. 👀<br><br>Aguantá un poquito…</p>
+  <div style="font-size:3rem;margin-bottom:0.5rem">🏆⏳</div>
+  <h3 style="color:var(--secondary);font-size:1.25rem;margin-bottom:0.6rem">¡Actualizando!</h3>
+  <p style="font-size:0.95rem;line-height:1.55;color:var(--text)">Las <b>tablas de posiciones</b> se están<br><b style="color:var(--secondary)">actualizando</b> con los resultados de la fecha.<br><br>Vuelven <b>muy pronto</b> 👀</p>
 </div>`;
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -1903,7 +1903,11 @@ function renderHome() {
   renderRecentResults();
   renderUpcomingMatches();
   const scores = calcGlobalScores();
-  renderTop10(scores.slice(0, 10), scores[0]?.total || 0);
+  if (STANDINGS_HIDDEN) {
+    const t10 = document.getElementById('top10-container'); if (t10) t10.innerHTML = STANDINGS_TEASER;
+  } else {
+    renderTop10(scores.slice(0, 10), scores[0]?.total || 0);
+  }
   const participants = _globalParticipants || [];
   const resultsCount = Object.keys(_results || {}).length;
   const avgPred = participants.length > 0
