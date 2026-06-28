@@ -1334,7 +1334,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-28c';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-28d';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -1861,7 +1861,8 @@ async function loadGlobalData() {
   _globalParticipants = await sbFetchAll('profiles', 'id, nombre, alias, created_at');
   // Guardamos TODOS los pronósticos (de todos los torneos). calcGlobalScores los une
   // por usuario quedándose con la mejor predicción de cada partido (necesita los resultados).
-  _globalPredictions = await sbFetchAll('predictions', 'user_id, match_id, goals_local, goals_visit, tournament_id');
+  // '*' para traer también 'pasa' (quién pasa, eliminatoria) sin romper si la columna aún no existe.
+  _globalPredictions = await sbFetchAll('predictions', '*');
 }
 
 async function loadTournaments() {
@@ -1886,7 +1887,7 @@ async function loadPredictions() {
   _predictions = [];
   for (let from = 0; ; from += 1000) {
     const { data } = await sb.from('predictions')
-      .select('user_id, match_id, goals_local, goals_visit')
+      .select('*')
       .eq('tournament_id', activeTournament.id)
       .range(from, from + 999);
     if (!data || !data.length) break;
@@ -1896,10 +1897,10 @@ async function loadPredictions() {
 }
 
 async function loadResults() {
-  const { data } = await sb.from('results').select('match_id, goals_local, goals_visit, updated_at');
+  const { data } = await sb.from('results').select('*');   // '*' para traer 'pasa' (quién pasó) sin romper si no existe
   _results = {};
   for (const r of (data || [])) {
-    _results[r.match_id] = { local: r.goals_local, visit: r.goals_visit };
+    _results[r.match_id] = { local: r.goals_local, visit: r.goals_visit, pasa: r.pasa || undefined };
   }
 }
 
@@ -1907,7 +1908,7 @@ function getPredsByUser(userId) {
   const map = {};
   for (const p of (_predictions || [])) {
     if (p.user_id === userId) {
-      map[p.match_id] = { local: p.goals_local, visit: p.goals_visit };
+      map[p.match_id] = { local: p.goals_local, visit: p.goals_visit, pasa: p.pasa || undefined };
     }
   }
   return map;
@@ -2143,6 +2144,16 @@ function loadMyPredictions() {
         const label = pts > 0 ? `${pts >= exacto ? '✅' : '⚡'} +${pts}pts` : (pred.local !== undefined ? `${pts < 0 ? '😬' : '❌'} ${pts}pts` : '—');
         ptsHtml = `<span class="pts-indicator ${cls}">${label}</span>`;
       }
+      const koPasa = esEliminatoria(p.jornada) ? (isMatchLocked(p)
+        ? (pred.pasa ? `<div class="match-meta" style="margin-top:0.3rem"><span>🔑 Pasa (tu pronóstico): <b>${esc(pred.pasa)}</b></span></div>` : '')
+        : `<div class="match-meta" style="margin-top:0.4rem;align-items:center;gap:0.4rem">
+            <span>🔑 Si empatás, ¿quién pasa?</span>
+            <select id="pasa-${p.id}" class="score-input" style="width:auto;min-width:130px;padding:2px 6px">
+              <option value="">—</option>
+              <option value="${esc(local)}" ${pred.pasa === local ? 'selected' : ''}>${esc(local)}</option>
+              <option value="${esc(visit)}" ${pred.pasa === visit ? 'selected' : ''}>${esc(visit)}</option>
+            </select>
+          </div>`) : '';
       html += `
         <div class="match-row">
           <div class="match-line">
@@ -2175,6 +2186,7 @@ function loadMyPredictions() {
               }
             </div>
           </div>
+          ${koPasa}
         </div>`;
     }
     html += '</div>';
@@ -2195,7 +2207,9 @@ async function savePredictions() {
       if (!lEl || !vEl) continue;
       const lv = lEl.value.trim(), vv = vEl.value.trim();
       if (lv !== '' && vv !== '') {
-        toUpsert.push({ user_id: currentUser.id, match_id: p.id, tournament_id: activeTournament.id, goals_local: parseInt(lv), goals_visit: parseInt(vv) });
+        const row = { user_id: currentUser.id, match_id: p.id, tournament_id: activeTournament.id, goals_local: parseInt(lv), goals_visit: parseInt(vv) };
+        if (esEliminatoria(p.jornada)) { const sel = document.getElementById(`pasa-${p.id}`); if (sel) row.pasa = sel.value || null; }
+        toUpsert.push(row);
       } else if (lv === '' && vv === '') {
         toDelete.push(p.id);
       }
@@ -2211,8 +2225,12 @@ async function savePredictions() {
   }
   try {
     if (toUpsert.length > 0) {
-      const { error } = await sb.from('predictions')
-        .upsert(toUpsert, { onConflict: 'user_id,match_id,tournament_id' });
+      let rows = toUpsert;
+      let { error } = await sb.from('predictions').upsert(rows, { onConflict: 'user_id,match_id,tournament_id' });
+      if (error && /pasa|column/i.test(error.message || '')) {   // columna 'pasa' aún no creada → guardar sin ella
+        rows = toUpsert.map(({ pasa, ...r }) => r);
+        ({ error } = await sb.from('predictions').upsert(rows, { onConflict: 'user_id,match_id,tournament_id' }));
+      }
       if (error) throw error;
     }
     if (toDelete.length > 0) {
@@ -2468,7 +2486,7 @@ function calcGlobalScores(jornadaFiltro) {
   const byUser = {};
   for (const p of (_globalPredictions || [])) {
     const u = byUser[p.user_id] || (byUser[p.user_id] = {});
-    const pred = { local: p.goals_local, visit: p.goals_visit };
+    const pred = { local: p.goals_local, visit: p.goals_visit, pasa: p.pasa || undefined };
     const prev = u[p.match_id];
     if (!prev) { u[p.match_id] = pred; continue; }
     const res = results[p.match_id];                       // si predijo el mismo partido 2 veces,
