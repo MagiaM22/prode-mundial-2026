@@ -1334,7 +1334,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-28b';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-28c';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -1537,6 +1537,29 @@ const FIXTURE = {
       {id:'L4', local:3, visit:1, jornada:2, fecha:'2026-06-23', hora:'20:00'},
       {id:'L5', local:3, visit:0, jornada:3, fecha:'2026-06-27', hora:'18:00'},
       {id:'L6', local:1, visit:2, jornada:3, fecha:'2026-06-27', hora:'18:00'},
+    ]
+  },
+  // ── Eliminatorias: local/visit son NOMBRES de selección (no índices). jornada 4 = 16avos. ──
+  KO: {
+    nombre: '16avos de final', flag: '🏆',
+    equipos: [],
+    partidos: [
+      {id:'R32-1',  local:'Sudáfrica',      visit:'Canadá',         jornada:4, fecha:'2026-06-28', hora:'16:00', ronda:'16avos'},
+      {id:'R32-2',  local:'Brasil',         visit:'Japón',          jornada:4, fecha:'2026-06-29', hora:'14:00', ronda:'16avos'},
+      {id:'R32-3',  local:'Alemania',       visit:'Paraguay',       jornada:4, fecha:'2026-06-29', hora:'17:30', ronda:'16avos'},
+      {id:'R32-4',  local:'Países Bajos',   visit:'Marruecos',      jornada:4, fecha:'2026-06-29', hora:'22:00', ronda:'16avos'},
+      {id:'R32-5',  local:'Costa de Marfil',visit:'Noruega',        jornada:4, fecha:'2026-06-30', hora:'14:00', ronda:'16avos'},
+      {id:'R32-6',  local:'Francia',        visit:'Suecia',         jornada:4, fecha:'2026-06-30', hora:'18:00', ronda:'16avos'},
+      {id:'R32-7',  local:'México',         visit:'Ecuador',        jornada:4, fecha:'2026-06-30', hora:'22:00', ronda:'16avos'},
+      {id:'R32-8',  local:'Inglaterra',     visit:'R.D. del Congo', jornada:4, fecha:'2026-07-01', hora:'13:00', ronda:'16avos'},
+      {id:'R32-9',  local:'Bélgica',        visit:'Senegal',        jornada:4, fecha:'2026-07-01', hora:'17:00', ronda:'16avos'},
+      {id:'R32-10', local:'Estados Unidos', visit:'Bosnia y Herz.', jornada:4, fecha:'2026-07-01', hora:'21:00', ronda:'16avos'},
+      {id:'R32-11', local:'España',         visit:'Austria',        jornada:4, fecha:'2026-07-02', hora:'16:00', ronda:'16avos'},
+      {id:'R32-12', local:'Portugal',       visit:'Croacia',        jornada:4, fecha:'2026-07-02', hora:'20:00', ronda:'16avos'},
+      {id:'R32-13', local:'Suiza',          visit:'Argelia',        jornada:4, fecha:'2026-07-03', hora:'00:00', ronda:'16avos'},
+      {id:'R32-14', local:'Australia',      visit:'Egipto',         jornada:4, fecha:'2026-07-03', hora:'15:00', ronda:'16avos'},
+      {id:'R32-15', local:'Argentina',      visit:'Cabo Verde',     jornada:4, fecha:'2026-07-03', hora:'19:00', ronda:'16avos'},
+      {id:'R32-16', local:'Colombia',       visit:'Ghana',          jornada:4, fecha:'2026-07-03', hora:'22:30', ronda:'16avos'},
     ]
   },
 };
@@ -2616,6 +2639,7 @@ function calcGroupStandings(gk) {
 function renderClasificacion() {
   let html = '';
   for (const [gk, group] of Object.entries(FIXTURE)) {
+    if (group.equipos.length !== 4) continue;   // saltar eliminatorias (no tienen tabla de grupo)
     const standings = calcGroupStandings(gk);
     html += `<div class="group-card">
       <div class="group-header"><h3>${group.flag} ${group.nombre}</h3></div>
@@ -4237,7 +4261,7 @@ const GDT_SWAP_ENFORCE_FROM = 4;
 // reemplazarlos (el reemplazo es gratis, no gasta cambios). Agregar acá cuando una queda
 // afuera. Los nombres deben coincidir EXACTO con 'seleccion' de GDT_PLAYERS.
 // Ej.: const GDT_ELIMINADAS = ['Sudáfrica', 'Catar'];
-const GDT_ELIMINADAS = [];
+const GDT_ELIMINADAS = ['Arabia Saudita', 'Catar', 'Corea del Sur', 'Curazao', 'Escocia', 'Haití', 'Irak', 'Irán', 'Jordania', 'Nueva Zelanda', 'Panamá', 'Rep. Checa', 'Turquía', 'Túnez', 'Uruguay', 'Uzbekistán'];
 function gdtIsEliminado(p) { return !!p && GDT_ELIMINADAS.includes(p.seleccion); }
 function gdtSquadEliminados() { return [..._gdtLineup, ..._gdtBench].filter(id => gdtIsEliminado(gdtPlayerById(id))); }
 const GDT_ELIM_BADGE = ' <span style="color:#ff6b6b;font-weight:700;font-size:0.6rem;background:rgba(255,107,107,0.14);padding:1px 5px;border-radius:4px">AFUERA</span>';
