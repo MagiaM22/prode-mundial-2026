@@ -1334,10 +1334,13 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-28d';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-28e';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
+// Jornadas cuyos resultados/tablas se ocultan por ahora (para revelar el ganador después). Vaciar para mostrar.
+const HIDDEN_JORNADAS = [3];
+function jornadaOculta(j) { return HIDDEN_JORNADAS.includes(j); }
 
 // Anuncio de ganador: lo muestra el botón "Anunciar Ganador" (solo admin). Editar acá.
 // La imagen debe estar en el repo con ese nombre. nombres/sub son texto libre.
@@ -2123,8 +2126,9 @@ function loadMyPredictions() {
   updatePredProgress(myPreds);
 
   let html = '<div class="groups-container">';
+  let koHtml = '', gruposHtml = '';
   for (const [gk, group] of Object.entries(FIXTURE)) {
-    html += `<div class="group-card">
+    let card = `<div class="group-card">
       <div class="group-header">
         <h3>${group.flag} ${group.nombre}</h3>
       </div>
@@ -2154,7 +2158,7 @@ function loadMyPredictions() {
               <option value="${esc(visit)}" ${pred.pasa === visit ? 'selected' : ''}>${esc(visit)}</option>
             </select>
           </div>`) : '';
-      html += `
+      card += `
         <div class="match-row">
           <div class="match-line">
             <div style="flex:1; min-width:0">
@@ -2189,8 +2193,18 @@ function loadMyPredictions() {
           ${koPasa}
         </div>`;
     }
-    html += '</div>';
+    card += '</div>';
+    // Eliminatoria arriba y expandida; fase de grupos (fechas 1-3) abajo, colapsada.
+    if (group.partidos.length && esEliminatoria(group.partidos[0].jornada)) koHtml += card;
+    else gruposHtml += card;
   }
+  html += koHtml;
+  if (gruposHtml) html += `<details class="group-card" style="padding:0;overflow:hidden">
+    <summary style="cursor:pointer;padding:0.85rem 1rem;font-weight:700;list-style:none;display:flex;align-items:center;gap:0.5rem">
+      <span>📁</span> Fase de grupos — Fechas 1, 2 y 3 <span style="font-weight:400;color:var(--text-muted);font-size:0.85rem">(ya jugadas · tocá para ver)</span>
+    </summary>
+    <div style="padding:0 0.5rem 0.5rem">${gruposHtml}</div>
+  </details>`;
   html += '</div>';
   document.getElementById('pronosticos-container').innerHTML = html;
 }
@@ -2528,6 +2542,12 @@ function renderLeaderboard() {
   const leader = scores[0]?.total || 0;
   const tab = (j, label) => `<button class="btn btn-sm ${_prodeLbJornada===j?'btn-gold':'btn-ghost'}" onclick="setProdeLbJornada(${j===null?'null':j})">${label}</button>`;
   const selector = `<div class="flex-gap" style="margin-bottom:0.75rem;flex-wrap:wrap">${tab(null,'🏆 General')}${gdtJornadas().map(j => tab(j, jornadaLabel(j))).join('')}</div>`;
+  if (jornadaOculta(_prodeLbJornada)) {   // fecha oculta: mostrar cartel "se anuncia pronto", no la tabla
+    container.innerHTML = selector + STANDINGS_TEASER;
+    const t10 = document.getElementById('top10-container'); if (t10) t10.innerHTML = STANDINGS_TEASER;
+    renderTorneoStats(resultsCount, participants.length, 0);
+    return;
+  }
   let html = selector + `<table class="leaderboard-table">
     <thead><tr>
       <th style="width:46px">#</th>
@@ -5141,6 +5161,7 @@ function renderGDTLeaderboard() {
   const tab = (j, label) => `<button class="btn btn-sm ${_gdtLbJornada===j?'btn-gold':'btn-ghost'}" onclick="setGDTLbJornada(${j===null?'null':j})">${label}</button>`;
   const selector = `<div class="flex-gap" style="margin-bottom:0.75rem;flex-wrap:wrap">${tab(null,'🏆 General')}${gdtJornadas().map(j => tab(j, jornadaLabel(j))).join('')}</div>`;
 
+  if (jornadaOculta(_gdtLbJornada)) { container.innerHTML = selector + STANDINGS_TEASER; if (statsEl) statsEl.textContent = ''; return; }   // fecha oculta
   if (!rows.length) { container.innerHTML = selector + `<div class="empty-state"><div class="icon">🏆</div><h3>Todavía nadie armó su equipo</h3><p>Andá a "Mi Equipo" y armá el tuyo.</p></div>`; return; }
 
   let html = selector + `<table class="gdt-lb-table"><thead><tr>
@@ -5307,6 +5328,7 @@ function renderTeamOfWeek(j) {
   ).join('');
   const el = document.getElementById('totw-container');
   if (!el) return;
+  if (jornadaOculta(j)) { el.innerHTML = STANDINGS_TEASER; return; }   // fecha oculta: se anuncia pronto
   const { matches, team } = calcTeamOfWeek(j);
   if (!team.length) {
     el.innerHTML = `<div class="empty-state"><div class="icon">⏳</div><h3>Todavía no hay stats de la fecha ${j}</h3><p>El equipo se arma solo a medida que se cargan las estadísticas de los partidos.</p></div>`;
