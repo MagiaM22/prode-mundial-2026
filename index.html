@@ -1334,7 +1334,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-28g';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-28h';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -4334,11 +4334,9 @@ function gdtJornadaStart(j) {
 // Jornada que se está editando ahora (la primera que todavía no arrancó); null = todo bloqueado
 function gdtEditJornada() {
   for (const j of gdtJornadas()) if (Date.now() < gdtJornadaStart(j)) return j;
-  // Gracia de 48h para admins: ajuste de equipo Fecha 3
-  if (isAdmin && Date.now() < gdtJornadaStart(3) + 48*60*60*1000) return 3;
   return null;
 }
-// TEMP: auto-guardar equipo Fecha 3 de Marcos — remover después de confirmar
+// TEMP: auto-guardar equipo Fecha 3 de Marcos directamente en snap[3] — remover después de confirmar
 async function adminAutoApplyTeam3() {
   if (!currentUser || currentUser.email !== 'marcosjmanzi@gmail.com') return;
   const desired        = ['ESP-01','POR-05','ESP-09','NED-04','ARG-08','FRA-07','COL-20','JPN-15','MAR-16','ARG-21','FRA-18'];
@@ -4347,11 +4345,20 @@ async function adminAutoApplyTeam3() {
   const snap3 = _gdtTransfers?.snap?.[3] || _gdtTransfers?.snap?.['3'];
   const alreadyOk = snap3 && JSON.stringify([...(snap3.lineup||[])].sort()) === JSON.stringify([...desired].sort());
   if (alreadyOk) { console.log('[admin] equipo Fecha 3 ya OK'); return; }
-  _gdtLineup    = [...desired];
-  _gdtBench     = [...desiredBench];
-  _gdtCaptainId = desiredCaptain;
-  await saveGDTTeam();
-  console.log('[admin] equipo Fecha 3 guardado automáticamente');
+  // Escribir directamente en snap[3] sin pasar por saveGDTTeam() (que apuntaría a Fecha 4)
+  _gdtTransfers.snap = _gdtTransfers.snap || {};
+  _gdtTransfers.snap[3] = { lineup: [...desired], bench: [...desiredBench], captain_id: desiredCaptain };
+  const row = {
+    user_id: currentUser.id,
+    lineup: _gdtBaseTeam.lineup, bench: _gdtBaseTeam.bench, captain_id: _gdtBaseTeam.captain_id,
+    presupuesto_usado: gdtBudgetUsed(),
+    transfers: _gdtTransfers,
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await sb.from('gdt_user_teams').upsert(row, { onConflict: 'user_id' });
+  if (error) { console.error('[admin] error:', error.message); showToast('❌ Error al guardar: ' + error.message); return; }
+  console.log('[admin] equipo Fecha 3 guardado en snap[3]');
+  showToast('✅ Equipo Fecha 3 guardado');
 }
 // Fecha "actual": la última que ya arrancó (la que se está jugando). Si ninguna arrancó, la primera.
 function gdtCurrentJornada() {
