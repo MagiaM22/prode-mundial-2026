@@ -1334,7 +1334,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-28f';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-28g';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -4334,7 +4334,24 @@ function gdtJornadaStart(j) {
 // Jornada que se está editando ahora (la primera que todavía no arrancó); null = todo bloqueado
 function gdtEditJornada() {
   for (const j of gdtJornadas()) if (Date.now() < gdtJornadaStart(j)) return j;
+  // Gracia de 48h para admins: ajuste de equipo Fecha 3
+  if (isAdmin && Date.now() < gdtJornadaStart(3) + 48*60*60*1000) return 3;
   return null;
+}
+// TEMP: auto-guardar equipo Fecha 3 de Marcos — remover después de confirmar
+async function adminAutoApplyTeam3() {
+  if (!currentUser || currentUser.email !== 'marcosjmanzi@gmail.com') return;
+  const desired        = ['ESP-01','POR-05','ESP-09','NED-04','ARG-08','FRA-07','COL-20','JPN-15','MAR-16','ARG-21','FRA-18'];
+  const desiredBench   = ['COL-21','ECU-09','ARG-12','ARG-03'];
+  const desiredCaptain = 'ARG-21';
+  const snap3 = _gdtTransfers?.snap?.[3] || _gdtTransfers?.snap?.['3'];
+  const alreadyOk = snap3 && JSON.stringify([...(snap3.lineup||[])].sort()) === JSON.stringify([...desired].sort());
+  if (alreadyOk) { console.log('[admin] equipo Fecha 3 ya OK'); return; }
+  _gdtLineup    = [...desired];
+  _gdtBench     = [...desiredBench];
+  _gdtCaptainId = desiredCaptain;
+  await saveGDTTeam();
+  console.log('[admin] equipo Fecha 3 guardado automáticamente');
 }
 // Fecha "actual": la última que ya arrancó (la que se está jugando). Si ninguna arrancó, la primera.
 function gdtCurrentJornada() {
@@ -4612,6 +4629,7 @@ async function loadGDTData() {
     _gdtProfiles = {};
     for (const p of (profs || [])) _gdtProfiles[p.id] = p;
   }
+  await adminAutoApplyTeam3(); // TEMP: remover después de confirmar
 }
 
 // ============================================================
