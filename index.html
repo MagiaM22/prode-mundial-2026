@@ -1334,7 +1334,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-28e';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-28f';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -1856,8 +1856,13 @@ async function doLogout() {
 // ============================================================
 // DATA LOADING
 // ============================================================
+let _pasaCol = false;   // ¿existe la columna 'pasa' (quién pasa)? Se chequea al cargar; si no, el selector queda deshabilitado.
+async function probePasaCol() {
+  try { const { error } = await sb.from('predictions').select('pasa').limit(1); _pasaCol = !error; }
+  catch (e) { _pasaCol = false; }
+}
 async function loadAllData() {
-  await Promise.all([loadParticipants(), loadPredictions(), loadResults(), loadTournaments(), loadGDTData(), loadGlobalData()]);
+  await Promise.all([loadParticipants(), loadPredictions(), loadResults(), loadTournaments(), loadGDTData(), loadGlobalData(), probePasaCol()]);
 }
 
 async function loadGlobalData() {
@@ -2150,14 +2155,16 @@ function loadMyPredictions() {
       }
       const koPasa = esEliminatoria(p.jornada) ? (isMatchLocked(p)
         ? (pred.pasa ? `<div class="match-meta" style="margin-top:0.3rem"><span>🔑 Pasa (tu pronóstico): <b>${esc(pred.pasa)}</b></span></div>` : '')
-        : `<div class="match-meta" style="margin-top:0.4rem;align-items:center;gap:0.4rem">
-            <span>🔑 Si empatás, ¿quién pasa?</span>
-            <select id="pasa-${p.id}" class="score-input" style="width:auto;min-width:130px;padding:2px 6px">
-              <option value="">—</option>
-              <option value="${esc(local)}" ${pred.pasa === local ? 'selected' : ''}>${esc(local)}</option>
-              <option value="${esc(visit)}" ${pred.pasa === visit ? 'selected' : ''}>${esc(visit)}</option>
-            </select>
-          </div>`) : '';
+        : (_pasaCol
+          ? `<div class="match-meta" style="margin-top:0.4rem;align-items:center;gap:0.4rem">
+              <span>🔑 Si empatás, ¿quién pasa?</span>
+              <select id="pasa-${p.id}" class="score-input" style="width:auto;min-width:130px;padding:2px 6px">
+                <option value="">—</option>
+                <option value="${esc(local)}" ${pred.pasa === local ? 'selected' : ''}>${esc(local)}</option>
+                <option value="${esc(visit)}" ${pred.pasa === visit ? 'selected' : ''}>${esc(visit)}</option>
+              </select>
+            </div>`
+          : `<div class="match-meta" style="margin-top:0.35rem"><span style="color:var(--text-muted)">🔑 El "quién pasa" (para empates) se habilita en breve</span></div>`)) : '';
       card += `
         <div class="match-row">
           <div class="match-line">
