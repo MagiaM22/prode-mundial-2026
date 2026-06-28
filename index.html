@@ -1199,11 +1199,7 @@
       <div class="card">
         <div class="flex-between" style="margin-bottom:0.75rem;flex-wrap:wrap;gap:0.5rem">
           <h2 style="margin:0">⭐ Equipo de la Fecha</h2>
-          <div class="flex-gap">
-            <button class="btn btn-gold btn-sm" id="totw-j1" onclick="renderTeamOfWeek(1)">Fecha 1</button>
-            <button class="btn btn-ghost btn-sm" id="totw-j2" onclick="renderTeamOfWeek(2)">Fecha 2</button>
-            <button class="btn btn-ghost btn-sm" id="totw-j3" onclick="renderTeamOfWeek(3)">Fecha 3</button>
-          </div>
+          <div class="flex-gap" id="totw-tabs" style="flex-wrap:wrap;gap:0.4rem"></div>
         </div>
         <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.75rem">
           El mejor 11 de cada fecha según los puntos del Gran DT. Se actualiza solo a medida que se cargan las stats de los partidos.
@@ -1338,7 +1334,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-25a';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-28a';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -1545,7 +1541,22 @@ const FIXTURE = {
   },
 };
 
-const TOTAL_MATCHES = 72;
+const TOTAL_MATCHES = Object.values(FIXTURE).reduce((n, g) => n + g.partidos.length, 0);
+
+// Resuelve el nombre del equipo de un partido: si es número, índice al array equipos[] del grupo;
+// si es string, nombre directo (para eliminatorias, donde los cruces no salen de un grupo fijo).
+function teamName(group, ref) { return typeof ref === 'string' ? ref : (group && group.equipos ? (group.equipos[ref] ?? '') : ''); }
+// Jornadas reales presentes en el FIXTURE (grupos = 1,2,3; eliminatorias = 4,5,6,7,8). Se DERIVA, no se hardcodea.
+function gdtJornadas() {
+  const s = new Set();
+  for (const g of Object.values(FIXTURE)) for (const p of g.partidos) s.add(p.jornada);
+  return [...s].sort((a, b) => a - b);
+}
+// Etiqueta de cada jornada (grupos = "Fecha N"; eliminatorias = nombre de ronda).
+const RONDA_LABEL = { 1: 'Fecha 1', 2: 'Fecha 2', 3: 'Fecha 3', 4: '16avos', 5: 'Octavos', 6: 'Cuartos', 7: 'Semis', 8: 'Final' };
+function jornadaLabel(j) { return RONDA_LABEL[j] || ('Fecha ' + j); }
+// ¿Es jornada de eliminatoria? (afecta el puntaje del prode y el bonus del Gran DT)
+function esEliminatoria(j) { return j >= 4; }
 
 const TEAM_API_MAP = {
   'Mexico':'México','México':'México','South Africa':'Sudáfrica',
@@ -1961,7 +1972,7 @@ function renderRecentResults() {
     for (const p of group.partidos) {
       const res = results[p.id];
       if (!res) continue;
-      recent.push({ home: group.equipos[p.local], away: group.equipos[p.visit],
+      recent.push({ home: teamName(group, p.local), away: teamName(group, p.visit),
         hg: res.local, ag: res.visit, fecha: p.fecha, grupo: group.nombre, flag: group.flag });
     }
   }
@@ -1995,7 +2006,7 @@ function renderUpcomingMatches() {
   for (const [gk, group] of Object.entries(FIXTURE)) {
     for (const p of group.partidos) {
       if (results[p.id]) continue;
-      upcoming.push({ home: group.equipos[p.local], away: group.equipos[p.visit],
+      upcoming.push({ home: teamName(group, p.local), away: teamName(group, p.visit),
         fecha: p.fecha, hora: p.hora, grupo: group.nombre, flag: group.flag, jornada: p.jornada });
     }
   }
@@ -2085,8 +2096,8 @@ function loadMyPredictions() {
       </div>
       <div class="group-teams-row">${group.equipos.map(e => `<span class="team-chip">${esc(e)}</span>`).join('')}</div>`;
     for (const p of group.partidos) {
-      const local  = group.equipos[p.local];
-      const visit  = group.equipos[p.visit];
+      const local  = teamName(group, p.local);
+      const visit  = teamName(group, p.visit);
       const pred   = myPreds[p.id] || {};
       const lv     = pred.local !== undefined ? pred.local : '';
       const vv     = pred.visit !== undefined ? pred.visit : '';
@@ -2210,8 +2221,8 @@ function renderFixture() {
         <span style="font-size:0.72rem;color:rgba(255,255,255,0.5)">${group.equipos.join(' · ')}</span>
       </div>`;
     for (const p of group.partidos) {
-      const local  = group.equipos[p.local];
-      const visit  = group.equipos[p.visit];
+      const local  = teamName(group, p.local);
+      const visit  = teamName(group, p.visit);
       const result = results[p.id];
       html += `
         <div class="match-row">
@@ -2270,7 +2281,7 @@ function renderResultsAdmin() {
   };
   const tab = (j, label) => `<button class="btn btn-sm ${jf===j?'btn-gold':'btn-ghost'}" onclick="setResAdminJornada(${j===null?'null':j})">${label}</button>`;
   let html = `<div class="flex-gap" style="margin-bottom:0.85rem;flex-wrap:wrap;align-items:center">
-    ${tab(null,'🗓️ Todas')}${tab(1,'Fecha 1 '+fechaCount(1))}${tab(2,'Fecha 2 '+fechaCount(2)+(cur===2?' • actual':''))}${tab(3,'Fecha 3 '+fechaCount(3)+(cur===3?' • actual':''))}
+    ${tab(null,'🗓️ Todas')}${gdtJornadas().map(j => tab(j, jornadaLabel(j)+' '+fechaCount(j)+(cur===j?' • actual':''))).join('')}
   </div>`;
   for (const [gk, group] of Object.entries(FIXTURE)) {
     const partidos = group.partidos.filter(p => jf === null || p.jornada === jf);
@@ -2282,8 +2293,8 @@ function renderResultsAdmin() {
         <span style="font-size:0.72rem;color:rgba(255,255,255,0.5)">${groupLoaded}/${partidos.length} cargados</span>
       </div>`;
     for (const p of partidos) {
-      const local  = group.equipos[p.local];
-      const visit  = group.equipos[p.visit];
+      const local  = teamName(group, p.local);
+      const visit  = teamName(group, p.visit);
       const result = results[p.id] || {};
       const lv = result.local !== undefined ? result.local : '';
       const vv = result.visit !== undefined ? result.visit : '';
@@ -2457,7 +2468,7 @@ function renderLeaderboard() {
   const scores = calcGlobalScores(_prodeLbJornada);
   const leader = scores[0]?.total || 0;
   const tab = (j, label) => `<button class="btn btn-sm ${_prodeLbJornada===j?'btn-gold':'btn-ghost'}" onclick="setProdeLbJornada(${j===null?'null':j})">${label}</button>`;
-  const selector = `<div class="flex-gap" style="margin-bottom:0.75rem;flex-wrap:wrap">${tab(null,'🏆 General')}${tab(1,'Fecha 1')}${tab(2,'Fecha 2')}${tab(3,'Fecha 3')}</div>`;
+  const selector = `<div class="flex-gap" style="margin-bottom:0.75rem;flex-wrap:wrap">${tab(null,'🏆 General')}${gdtJornadas().map(j => tab(j, jornadaLabel(j))).join('')}</div>`;
   let html = selector + `<table class="leaderboard-table">
     <thead><tr>
       <th style="width:46px">#</th>
@@ -2678,7 +2689,7 @@ async function syncFromAPI() {
       if (!homeES || !awayES) continue;
       for (const group of Object.values(FIXTURE)) {
         for (const p of group.partidos) {
-          if (group.equipos[p.local] === homeES && group.equipos[p.visit] === awayES) {
+          if (teamName(group, p.local) === homeES && teamName(group, p.visit) === awayES) {
             toUpsert.push({ match_id: p.id, goals_local: hg, goals_visit: ag, updated_at: new Date().toISOString() });
           }
         }
@@ -4235,13 +4246,14 @@ function gdtJornadaStart(j) {
 }
 // Jornada que se está editando ahora (la primera que todavía no arrancó); null = todo bloqueado
 function gdtEditJornada() {
-  for (const j of [1, 2, 3]) if (Date.now() < gdtJornadaStart(j)) return j;
+  for (const j of gdtJornadas()) if (Date.now() < gdtJornadaStart(j)) return j;
   return null;
 }
-// Fecha "actual": la última que ya arrancó (la que se está jugando). Si ninguna arrancó, 1.
+// Fecha "actual": la última que ya arrancó (la que se está jugando). Si ninguna arrancó, la primera.
 function gdtCurrentJornada() {
-  let cur = 1;
-  for (const j of [1, 2, 3]) if (gdtJornadaStart(j) <= Date.now()) cur = j;
+  const js = gdtJornadas();
+  let cur = js[0] || 1;
+  for (const j of js) if (gdtJornadaStart(j) <= Date.now()) cur = j;
   return cur;
 }
 function gdtMatchJornada(matchId) {
@@ -4944,8 +4956,8 @@ function gdtFindPlayerTeamInMatch(matchId, seleccion) {
   for (const group of Object.values(FIXTURE)) {
     const partido = group.partidos.find(p => p.id === matchId);
     if (!partido) continue;
-    if (group.equipos[partido.local]  === seleccion) return 'home';
-    if (group.equipos[partido.visit]  === seleccion) return 'away';
+    if (teamName(group, partido.local)  === seleccion) return 'home';
+    if (teamName(group, partido.visit)  === seleccion) return 'away';
   }
   return null;
 }
@@ -5016,7 +5028,7 @@ function calcGDTUserScore(userId, jornadaFiltro) {
   const playerPts = (_gdtLineup || []).map(id => ({ id, pts:0 }));
   const addLive = (id, pts) => { const i = playerPts.findIndex(pp => pp.id === id); if (i >= 0) playerPts[i].pts += pts; };
 
-  const jornadas = jornadaFiltro ? [jornadaFiltro] : [1, 2, 3];
+  const jornadas = jornadaFiltro ? [jornadaFiltro] : gdtJornadas();
   for (const j of jornadas) {
     const jm = gdtJornadaMatchIds(j);
     if (!jm.length) continue;
@@ -5066,7 +5078,7 @@ function renderGDTLeaderboard() {
 
   // Selector General / por Fecha
   const tab = (j, label) => `<button class="btn btn-sm ${_gdtLbJornada===j?'btn-gold':'btn-ghost'}" onclick="setGDTLbJornada(${j===null?'null':j})">${label}</button>`;
-  const selector = `<div class="flex-gap" style="margin-bottom:0.75rem;flex-wrap:wrap">${tab(null,'🏆 General')}${tab(1,'Fecha 1')}${tab(2,'Fecha 2')}${tab(3,'Fecha 3')}</div>`;
+  const selector = `<div class="flex-gap" style="margin-bottom:0.75rem;flex-wrap:wrap">${tab(null,'🏆 General')}${gdtJornadas().map(j => tab(j, jornadaLabel(j))).join('')}</div>`;
 
   if (!rows.length) { container.innerHTML = selector + `<div class="empty-state"><div class="icon">🏆</div><h3>Todavía nadie armó su equipo</h3><p>Andá a "Mi Equipo" y armá el tuyo.</p></div>`; return; }
 
@@ -5121,7 +5133,7 @@ function renderGDTAdminStats() {
     for (const p of group.partidos) {
       if (jf !== null && p.jornada !== jf) continue;
       matches.push({ id: p.id, jornada: p.jornada, flag: group.flag, grupo: group.nombre,
-        home: group.equipos[p.local], away: group.equipos[p.visit], res: results[p.id] || null });
+        home: teamName(group, p.local), away: teamName(group, p.visit), res: results[p.id] || null });
     }
   }
 
@@ -5132,7 +5144,7 @@ function renderGDTAdminStats() {
   };
   const tab = (j, label) => `<button class="btn btn-sm ${jf===j?'btn-gold':'btn-ghost'}" onclick="setGdtAdminJornada(${j===null?'null':j})">${label}</button>`;
   const selector = `<div class="flex-gap" style="margin-bottom:0.85rem;flex-wrap:wrap;align-items:center">
-    ${tab(null,'🗓️ Todas')}${tab(1,'Fecha 1 '+syncedCount(1))}${tab(2,'Fecha 2 '+syncedCount(2)+(cur===2?' • actual':''))}${tab(3,'Fecha 3 '+syncedCount(3)+(cur===3?' • actual':''))}
+    ${tab(null,'🗓️ Todas')}${gdtJornadas().map(j => tab(j, jornadaLabel(j)+' '+syncedCount(j)+(cur===j?' • actual':''))).join('')}
   </div>`;
 
   // slug → jugador GDT, para calcular el puntaje de cada fila
@@ -5228,14 +5240,10 @@ function calcTeamOfWeek(j) {
 function renderTeamOfWeek(j) {
   _totwJornada = j;
   const cur = gdtCurrentJornada();
-  [1,2,3].forEach(n => {
-    const b = document.getElementById('totw-j'+n);
-    if (b) {
-      b.classList.toggle('btn-gold', n === j);
-      b.classList.toggle('btn-ghost', n !== j);
-      b.textContent = 'Fecha ' + n + (n === cur ? ' • actual' : '');   // marca cuál es la fecha en juego
-    }
-  });
+  const tabs = document.getElementById('totw-tabs');
+  if (tabs) tabs.innerHTML = gdtJornadas().map(n =>
+    `<button class="btn btn-sm ${n === j ? 'btn-gold' : 'btn-ghost'}" onclick="renderTeamOfWeek(${n})">${jornadaLabel(n)}${n === cur ? ' • actual' : ''}</button>`
+  ).join('');
   const el = document.getElementById('totw-container');
   if (!el) return;
   const { matches, team } = calcTeamOfWeek(j);
@@ -5280,7 +5288,7 @@ async function espnFindEvent(matchId) {
     if (p) { partido = p; grupo = group; break; }
   }
   if (!partido) throw new Error(`Partido ${matchId} no está en el fixture`);
-  const localES = grupo.equipos[partido.local], visitES = grupo.equipos[partido.visit];
+  const localES = teamName(grupo, partido.local), visitES = teamName(grupo, partido.visit);
 
   const d   = new Date(`${partido.fecha}T12:00:00-03:00`);
   const ymd = dt => dt.toISOString().slice(0,10).replace(/-/g,'');
@@ -5382,7 +5390,7 @@ async function fotmobFindMatchId(matchId) {
     if (p) { partido = p; grupo = group; break; }
   }
   if (!partido) return null;
-  const localES = grupo.equipos[partido.local], visitES = grupo.equipos[partido.visit];
+  const localES = teamName(grupo, partido.local), visitES = teamName(grupo, partido.visit);
   // FotMob agrupa por fecha UTC: probar la fecha del fixture (ART) y el día siguiente
   for (const offset of [0, 1]) {
     const d   = new Date(new Date(`${partido.fecha}T12:00:00-03:00`).getTime() + offset * 86400000);
