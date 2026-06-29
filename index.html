@@ -1334,30 +1334,30 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-28i';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-28j';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
 // Jornadas cuyos resultados/tablas se ocultan por ahora (para revelar el ganador después). Vaciar para mostrar.
-const HIDDEN_JORNADAS = [3];
+const HIDDEN_JORNADAS = [];
 function jornadaOculta(j) { return HIDDEN_JORNADAS.includes(j); }
 
 // Anuncio de ganador: lo muestra el botón "Anunciar Ganador" (solo admin). Editar acá.
 // La imagen debe estar en el repo con ese nombre. nombres/sub son texto libre.
 // activo:true → se muestra solo a cada usuario (1 vez por sesión) al entrar. id = key de sesión.
 const WINNER_ANNOUNCE = {
-  activo: false, id: 'prode-f2',       // Fecha 2 ya anunciada → apagado (el botón admin igual funciona)
-  label:   'Ganador · Prode Fecha 2',
-  nombres: 'Klaz',
-  sub:     '¡El mejor de la Fecha 2 con 30 puntos! 🏆',
-  imagen:  'ganador.jpeg',
+  activo: true, id: 'prode-f3',
+  label:   'Ganador · Prode Fecha 3',
+  nombres: 'André Mendoza',
+  sub:     '¡El mejor de la Fecha 3! 🏆',
+  imagen:  'ganador3.jpeg',
 };
 const WINNER_ANNOUNCE_GDT = {
-  activo: false, id: 'gdt-f2',         // Fecha 2 ya anunciada → apagado (el botón admin igual funciona)
-  label:   '🏆 Ganador del Gran DT · Fecha 2',
-  nombres: 'Fefiño',
-  sub:     '¡El mejor DT de la Fecha 2 con 183 puntos! ⚽',
-  imagen:  'ganador-gdt.jpeg',
+  activo: true, id: 'gdt-f3',
+  label:   '🏆 Ganador del Gran DT · Fecha 3',
+  nombres: 'Francisco Armas',
+  sub:     '¡El mejor DT de la Fecha 3! ⚽',
+  imagen:  'ganador3-gdt.jpeg',
 };
 // Muestra el anuncio una sola vez por sesión, SOLO si su sección sigue activa al disparar.
 function maybeAutoAnnounce(cfg, sectionId) {
@@ -5600,6 +5600,8 @@ function showWinnerAnnouncement(cfg) {
   const c = cfg || WINNER_ANNOUNCE || {};
   const img = document.getElementById('winner-image');
   if (c.imagen) { img.src = c.imagen + '?v=' + APP_VERSION; img.style.display = ''; } else { img.style.display = 'none'; }
+  // Ajustar tamaño: Grande solo para Gran DT
+  if (c === WINNER_ANNOUNCE_GDT) { img.style.maxWidth = '500px'; img.style.width = '90%'; } else { img.style.maxWidth = '340px'; img.style.width = '80%'; }
   document.getElementById('winner-label').textContent = c.label || 'Ganador del Torneo';
   document.getElementById('winner-tournament-name').textContent = '';
   document.getElementById('winner-name-display').textContent = c.nombres || '';
