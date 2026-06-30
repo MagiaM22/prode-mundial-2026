@@ -1338,7 +1338,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-30a';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-30b';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -2589,7 +2589,8 @@ function renderLeaderboard() {
     renderTorneoStats(resultsCount, participants.length, 0);
     return;
   }
-  let html = selector + `<table class="leaderboard-table">
+  let html = selector + `<div style="font-size:0.74rem;color:var(--text-muted);margin-bottom:0.4rem">👆 Tocá a alguien para ver qué pronosticó y si le pegó</div>
+  <table class="leaderboard-table">
     <thead><tr>
       <th style="width:46px">#</th>
       <th>Participante</th>
@@ -2604,7 +2605,7 @@ function renderLeaderboard() {
     if (p.total !== _prevTotal) { _rank = i + 1; _prevTotal = p.total; }  // empate: mismo puntaje → misma posición
     const rc  = _rank === 1 ? 'rank-1' : _rank === 2 ? 'rank-2' : _rank === 3 ? 'rank-3' : 'rank-other';
     const isMe = p.id === currentUser?.id;
-    html += `<tr style="${isMe ? 'background:rgba(201,170,113,0.04)' : ''}">
+    html += `<tr onclick="showUserPredictions('${p.id}')" style="cursor:pointer;${isMe ? 'background:rgba(201,170,113,0.04)' : ''}">
       <td><span class="rank-badge ${rc}">${_rank}</span></td>
       <td>
         <div style="font-weight:600">${esc(p.nombre)}${isMe ? ' <span class="admin-badge" style="background:var(--primary)">Vos</span>' : ''}</div>
@@ -2642,7 +2643,7 @@ function renderTop10(scores, leader) {
     if (p.total !== _pt) { _r = i + 1; _pt = p.total; }
     const rc  = _r === 1 ? 'rank-1' : _r === 2 ? 'rank-2' : _r === 3 ? 'rank-3' : 'rank-other';
     const pct = leader > 0 ? Math.round(p.total / leader * 100) : 100;
-    return `<div class="top10-item">
+    return `<div class="top10-item" onclick="showUserPredictions('${p.id}')" style="cursor:pointer">
       <span class="rank-badge ${rc}" style="flex-shrink:0;width:24px;height:24px;font-size:0.75rem">${_r}</span>
       <div style="flex:1;min-width:0">
         <div class="top10-name">${esc(p.nombre)}</div>
@@ -2653,6 +2654,72 @@ function renderTop10(scores, leader) {
       <span class="top10-pts">${p.total}<span style="font-size:0.65rem;color:var(--text-muted);font-weight:400"> pts</span></span>
     </div>`;
   }).join('');
+}
+
+// Mejor pronóstico por partido de un usuario (unión de sus torneos, el que más puntúa).
+function getUserBestPreds(userId) {
+  const results = _results || {};
+  const mp = {};
+  for (const p of (_globalPredictions || [])) {
+    if (p.user_id !== userId) continue;
+    const pred = { local: p.goals_local, visit: p.goals_visit, pasa: p.pasa || undefined };
+    const prev = mp[p.match_id];
+    if (!prev) { mp[p.match_id] = pred; continue; }
+    const res = results[p.match_id], j = gdtMatchJornada(p.match_id);
+    if (res && calcScore(pred, res, j) > calcScore(prev, res, j)) mp[p.match_id] = pred;
+  }
+  return mp;
+}
+
+// Modal: todos los pronósticos de un usuario (qué puso, el resultado real y si le pegó).
+function showUserPredictions(userId) {
+  const prof = (_globalParticipants || []).find(p => p.id === userId) || { nombre: 'Jugador', alias: '?' };
+  const mp = getUserBestPreds(userId);
+  const results = _results || {};
+  const sc = calcGlobalScores(null).find(p => p.id === userId);
+  const total = sc ? sc.total : 0;
+  let body = '';
+  for (const j of gdtJornadas()) {
+    if (jornadaOculta(j)) continue;                    // no revelar fechas ocultas
+    let rows = '';
+    for (const g of Object.values(FIXTURE)) for (const pt of g.partidos) {
+      if (pt.jornada !== j) continue;
+      const pred = mp[pt.id]; if (!pred || pred.local === undefined) continue;   // solo lo que pronosticó
+      const res = results[pt.id];
+      const pts = res ? calcScore(pred, res, j) : null;
+      const exacto = prodePts(j)[1];
+      let icon = '⏳', col = 'var(--text-muted)';
+      if (pts !== null) {
+        if (pts >= exacto) { icon = '✅'; col = '#7fd17f'; }
+        else if (pts > 0)  { icon = '⚡'; col = 'var(--secondary)'; }
+        else if (pts < 0)  { icon = '😬'; col = '#ff6b6b'; }
+        else               { icon = '❌'; col = '#ff6b6b'; }
+      }
+      const predTxt = `${pred.local}-${pred.visit}` + (pred.pasa ? ` <span style="color:var(--text-muted);font-size:0.68rem">(${esc(pred.pasa)})</span>` : '');
+      const resTxt  = res ? `${res.local}-${res.visit}` + (res.pasa ? ` <span style="color:var(--text-muted);font-size:0.68rem">(${esc(res.pasa)})</span>` : '') : '<span style="color:var(--text-muted)">—</span>';
+      rows += `<tr>
+        <td style="font-size:0.78rem">${esc(teamName(g, pt.local))} <span style="color:var(--text-muted)">vs</span> ${esc(teamName(g, pt.visit))}</td>
+        <td style="text-align:center;white-space:nowrap">${predTxt}</td>
+        <td style="text-align:center;white-space:nowrap">${resTxt}</td>
+        <td style="text-align:center;white-space:nowrap">${icon}${pts !== null ? ` <b style="color:${col}">${pts > 0 ? '+' : ''}${pts}</b>` : ''}</td>
+      </tr>`;
+    }
+    if (rows) body += `<tr><td colspan="4" style="background:rgba(255,255,255,0.05);font-weight:700;font-size:0.78rem;padding:4px 7px">${jornadaLabel(j)}</td></tr>${rows}`;
+  }
+  if (!body) body = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:1rem">Sin pronósticos cargados.</td></tr>`;
+  const overlay = document.createElement('div');
+  overlay.id = 'user-preds-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.78);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem';
+  overlay.onclick = () => overlay.remove();
+  overlay.innerHTML = `<div onclick="event.stopPropagation()" style="background:#161b22;border:1px solid var(--border);border-radius:12px;max-width:560px;width:100%;max-height:86vh;overflow:auto;padding:1.1rem">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.7rem">
+        <div><div style="font-weight:700;font-size:1.05rem">${esc(prof.nombre)}</div><div style="font-size:0.76rem;color:var(--secondary)">@${esc(prof.alias)} · pronósticos</div></div>
+        <div style="text-align:right"><span class="pts-big">${total}</span><div style="font-size:0.68rem;color:var(--text-muted)">pts</div></div>
+      </div>
+      <table class="gdt-stat-table" style="width:100%"><thead><tr><th style="text-align:left">Partido</th><th>Pron.</th><th>Real</th><th>Pts</th></tr></thead><tbody>${body}</tbody></table>
+      <div style="text-align:center;margin-top:0.7rem"><button class="btn btn-ghost btn-sm" onclick="document.getElementById('user-preds-modal').remove()">Cerrar</button></div>
+    </div>`;
+  document.body.appendChild(overlay);
 }
 
 function renderTorneoStats(resultsCount, participants, avgPred) {
