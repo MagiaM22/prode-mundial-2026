@@ -988,6 +988,10 @@
       </div>
       <div class="countdown-wrap" id="countdown-wrap"></div>
     </div>
+    <div class="card" id="home-foto-card" style="margin-bottom:1rem;text-align:center;padding:0.6rem">
+      <img src="inicio.jpg" alt="Foto del prode" style="max-width:100%;max-height:460px;border-radius:10px;display:inline-block"
+           onerror="document.getElementById('home-foto-card').style.display='none'">
+    </div>
     <div class="home-layout">
       <div class="home-main">
         <div class="card" style="margin-bottom:1rem">
@@ -1334,7 +1338,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-28m';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-30a';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -1346,14 +1350,14 @@ function jornadaOculta(j) { return HIDDEN_JORNADAS.includes(j); }
 // La imagen debe estar en el repo con ese nombre. nombres/sub son texto libre.
 // activo:true → se muestra solo a cada usuario (1 vez por sesión) al entrar. id = key de sesión.
 const WINNER_ANNOUNCE = {
-  activo: true, id: 'prode-f3',
+  activo: false, id: 'prode-f3',
   label:   'Ganador · Prode Fecha 3',
   nombres: 'André Mendoza',
   sub:     '¡El mejor de la Fecha 3! 🏆',
   imagen:  'ganador3.jpeg',
 };
 const WINNER_ANNOUNCE_GDT = {
-  activo: true, id: 'gdt-f3',
+  activo: false, id: 'gdt-f3',
   label:   '🏆 Ganador del Gran DT · Fecha 3',
   nombres: 'Francisco Armas',
   sub:     '¡El mejor DT de la Fecha 3! ⚽',
@@ -5469,7 +5473,10 @@ async function espnFindEvent(matchId) {
 // Convierte el summary de ESPN (rosters + keyEvents) a filas de gdt_match_stats.
 // ESPN no informa MVP: is_mvp queda en false (se puede cargar a mano en Supabase).
 function buildStatsFromESPN(summary) {
-  const FT = 90;
+  // Si el partido fue a prórroga (algún evento después del minuto 90), el tiempo completo es 120'
+  // así un suplente que entra en el alargue no queda con minutos negativos → 0 ("no jugó").
+  const maxMin = Math.max(0, ...(summary.keyEvents || []).map(ev => Math.round((ev.clock?.value || 0) / 60)));
+  const FT = maxMin > 90 ? 120 : 90;
   const ps = {};
   const teamES = t => TEAM_API_MAP[t?.displayName] || t?.displayName || '';
   const ensure = (name, team) => {
