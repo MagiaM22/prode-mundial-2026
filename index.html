@@ -2393,6 +2393,14 @@ function renderResultsAdmin() {
                 id="rs-${p.id}-v" placeholder="?" oninput="saveResult('${p.id}')">
             </div>
           </div>
+          ${esEliminatoria(p.jornada) ? `<div class="match-meta" style="margin-top:0.4rem">
+            <span>🔑 ¿Quién pasó de ronda?</span>
+            <select id="rp-${p.id}" class="score-input" style="width:auto;min-width:130px;padding:2px 6px" onchange="saveResult('${p.id}')">
+              <option value="">—</option>
+              <option value="${esc(local)}" ${result.pasa===local?'selected':''}>${esc(local)}</option>
+              <option value="${esc(visit)}" ${result.pasa===visit?'selected':''}>${esc(visit)}</option>
+            </select>
+          </div>` : ''}
         </div>`;
     }
     html += '</div>';
@@ -2417,9 +2425,15 @@ async function _doSaveResult(matchId) {
     if (_results) delete _results[matchId];
   } else if (lv !== '' && vv !== '') {
     const row = { match_id: matchId, goals_local: parseInt(lv), goals_visit: parseInt(vv), updated_at: new Date().toISOString() };
-    const { error } = await sb.from('results').upsert(row, { onConflict: 'match_id' });
+    const pEl = document.getElementById(`rp-${matchId}`);     // "quién pasó" (eliminatoria)
+    if (pEl) row.pasa = pEl.value || null;
+    let { error } = await sb.from('results').upsert(row, { onConflict: 'match_id' });
+    if (error && /pasa|column/i.test(error.message || '')) {  // columna 'pasa' aún no creada → guardar sin ella
+      const { pasa, ...r } = row;
+      ({ error } = await sb.from('results').upsert(r, { onConflict: 'match_id' }));
+    }
     if (error) { showToast('❌ Error: ' + error.message); return; }
-    if (_results) _results[matchId] = { local: parseInt(lv), visit: parseInt(vv) };
+    if (_results) _results[matchId] = { local: parseInt(lv), visit: parseInt(vv), pasa: row.pasa || undefined };
   }
   const loaded = Object.keys(_results || {}).length;
   const rcEl = document.getElementById('results-count');
