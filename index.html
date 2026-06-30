@@ -1334,7 +1334,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-28j';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-28k';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -2528,11 +2528,26 @@ function calcGlobalScores(jornadaFiltro) {
     const jm = gdtMatchJornada(p.match_id);
     if (res && calcScore(pred, res, jm) > calcScore(prev, res, jm)) u[p.match_id] = pred;  // quedarse con la mejor
   }
+  // Bonus SOLITARIO (solo eliminatoria): +1 al ÚNICO participante que le pegó al 1X2 (ganó/empató/perdió)
+  // de un partido KO. Si lo aciertan 0 o 2+, nadie cobra. Premia la predicción arriesgada/única.
+  const aciertoDir = (pr, res) => pr && pr.local !== undefined && Math.sign(pr.local - pr.visit) === Math.sign(res.local - res.visit);
+  const loneByUser = {};
+  for (const group of Object.values(FIXTURE)) for (const pt of group.partidos) {
+    if (!esEliminatoria(pt.jornada)) continue;
+    if (jornadaFiltro && pt.jornada !== jornadaFiltro) continue;
+    const res = results[pt.id]; if (!res) continue;
+    let unico = null, n = 0;
+    for (const part of participants) {
+      if (aciertoDir(byUser[part.id] && byUser[part.id][pt.id], res)) { n++; unico = part.id; if (n > 1) break; }
+    }
+    if (n === 1) loneByUser[unico] = (loneByUser[unico] || 0) + 1;
+  }
   return participants.map(p => {
     const mp = byUser[p.id] || {};
     const sc = scoreOfPreds(mp, results, jornadaFiltro);
     let total = sc.total;
     if (!jornadaFiltro) total += prodeBonus(p);
+    total += (loneByUser[p.id] || 0);                     // bonus solitario eliminatoria
     const predCount = Object.keys(mp).length;             // total de partidos pronosticados (unión de torneos), sobre 72
     return { ...p, total, exact: sc.exact, partial: sc.partial, zero: sc.played - sc.exact - sc.partial, played: sc.played, predCount };
   }).sort((a, b) => b.total - a.total || b.exact - a.exact || b.partial - a.partial || a.nombre.localeCompare(b.nombre));
