@@ -1334,7 +1334,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-28k';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-28l';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -5200,9 +5200,10 @@ function renderGDTLeaderboard() {
   if (jornadaOculta(_gdtLbJornada)) { container.innerHTML = selector + STANDINGS_TEASER; if (statsEl) statsEl.textContent = ''; return; }   // fecha oculta
   if (!rows.length) { container.innerHTML = selector + `<div class="empty-state"><div class="icon">🏆</div><h3>Todavía nadie armó su equipo</h3><p>Andá a "Mi Equipo" y armá el tuyo.</p></div>`; return; }
 
-  let html = selector + `<table class="gdt-lb-table"><thead><tr>
+  let html = selector + `<div style="font-size:0.74rem;color:var(--text-muted);margin-bottom:0.4rem">👆 Tocá un equipo para ver su formación y puntos de la fecha</div>
+  <table class="gdt-lb-table"><thead><tr>
     <th style="width:46px">#</th><th>Participante</th>
-    <th style="text-align:center">${_gdtLbJornada ? 'Pts Fecha '+_gdtLbJornada : 'Puntos GDT'}</th><th>Equipo</th>
+    <th style="text-align:center">${_gdtLbJornada ? 'Pts '+jornadaLabel(_gdtLbJornada) : 'Puntos GDT'}</th><th>Equipo</th>
   </tr></thead><tbody>`;
 
   let _rank = 0, _prevTotal = null;
@@ -5214,7 +5215,7 @@ function renderGDTLeaderboard() {
     const preview = (p.team?.lineup||[]).slice(0,3).map(id => {
       const pl = gdtPlayerById(id); return pl ? `${pl.flag} ${pl.nombre.split(' ').pop()}` : '';
     }).filter(Boolean).join(', ');
-    html += `<tr style="${isMe?'background:rgba(201,170,113,0.04)':''}">
+    html += `<tr onclick="showGDTUserTeam('${p.id}')" style="cursor:pointer;${isMe?'background:rgba(201,170,113,0.04)':''}">
       <td><span class="rank-badge ${rc}">${_rank}</span></td>
       <td>
         <div style="font-weight:600">${esc(p.nombre)}${isMe?' <span class="admin-badge" style="background:var(--primary)">Vos</span>':''}</div>
@@ -5228,6 +5229,47 @@ function renderGDTLeaderboard() {
   });
   html += '</tbody></table>';
   container.innerHTML = html;
+}
+
+// Modal: ver el equipo de un usuario y sus puntos en la fecha seleccionada (o la actual si es General).
+function showGDTUserTeam(userId) {
+  const team = _gdtAllTeams?.[userId]; if (!team) return;
+  const prof = _gdtProfiles?.[userId] || { nombre: 'Jugador', alias: '?' };
+  const j   = _gdtLbJornada || gdtCurrentJornada();        // qué fecha mostrar
+  const tj  = gdtTeamForJornada(team, j);
+  const captainId = tj.captain_id;
+  const jm  = gdtJornadaMatchIds(j);
+  const score = calcGDTUserScore(userId, _gdtLbJornada);   // total correcto (general o fecha)
+  const posClass = { GK:'pos-gk', DEF:'pos-def', MED:'pos-med', DEL:'pos-del' };
+  const ptsOf = id => Math.round((gdtPlayedInMatches(id, jm) ? gdtPointsInMatches(id, jm, captainId) : 0) * 10) / 10;
+  const row = (id, sub) => {
+    const pl = gdtPlayerById(id); if (!pl) return '';
+    const cap = id === captainId, pts = ptsOf(id);
+    const jugo = gdtPlayedInMatches(id, jm);
+    return `<tr style="${sub?'opacity:0.82':''}">
+      <td>${pl.flag} ${esc(pl.nombre)}${cap?' <span style="color:#ffc107">★</span>':''} <span class="gdt-pool-pos ${posClass[pl.pos]}" style="font-size:0.6rem">${pl.pos}</span></td>
+      <td style="color:var(--text-muted);font-size:0.78rem">${esc(pl.seleccion)}</td>
+      <td style="text-align:right;font-weight:700;color:${jugo?'var(--secondary)':'var(--text-muted)'}">${jugo?pts:'—'}</td></tr>`;
+  };
+  const lineup = (tj.lineup || []).map(id => row(id, false)).join('');
+  const bench  = (tj.bench  || []).map(id => row(id, true)).join('');
+  const overlay = document.createElement('div');
+  overlay.id = 'gdt-team-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.78);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem';
+  overlay.onclick = () => overlay.remove();
+  overlay.innerHTML = `<div onclick="event.stopPropagation()" style="background:#161b22;border:1px solid var(--border);border-radius:12px;max-width:480px;width:100%;max-height:86vh;overflow:auto;padding:1.1rem">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.7rem">
+        <div><div style="font-weight:700;font-size:1.05rem">${esc(prof.nombre)}</div>
+          <div style="font-size:0.76rem;color:var(--secondary)">@${esc(prof.alias)} · ${_gdtLbJornada ? jornadaLabel(j) : 'General'}</div></div>
+        <div style="text-align:right"><span class="pts-big">${score.total}</span><div style="font-size:0.68rem;color:var(--text-muted)">pts ${_gdtLbJornada ? jornadaLabel(j) : 'totales'}</div></div>
+      </div>
+      <table class="gdt-stat-table" style="width:100%"><thead><tr><th style="text-align:left">Titular (★ capitán)</th><th style="text-align:left">Selección</th><th style="text-align:right">${jornadaLabel(j)}</th></tr></thead><tbody>${lineup}</tbody></table>
+      <div style="font-size:0.8rem;color:var(--text-muted);margin:0.7rem 0 0.3rem">🪑 Suplentes</div>
+      <table class="gdt-stat-table" style="width:100%"><tbody>${bench}</tbody></table>
+      <div style="font-size:0.7rem;color:var(--text-muted);margin-top:0.5rem">Los puntos son de ${jornadaLabel(j)}. Si un titular no jugó, sus puntos los aporta un suplente (por eso el total puede no ser la suma exacta).</div>
+      <div style="text-align:center;margin-top:0.7rem"><button class="btn btn-ghost btn-sm" onclick="document.getElementById('gdt-team-modal').remove()">Cerrar</button></div>
+    </div>`;
+  document.body.appendChild(overlay);
 }
 
 // ============================================================
