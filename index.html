@@ -1338,7 +1338,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-30b';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-06-30c';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -2233,7 +2233,9 @@ async function savePredictions() {
       const lv = lEl.value.trim(), vv = vEl.value.trim();
       if (lv !== '' && vv !== '') {
         const row = { user_id: currentUser.id, match_id: p.id, tournament_id: activeTournament.id, goals_local: parseInt(lv), goals_visit: parseInt(vv) };
-        if (esEliminatoria(p.jornada)) { const sel = document.getElementById(`pasa-${p.id}`); if (sel) row.pasa = sel.value || null; }
+        // "Quién pasa" solo tiene sentido si pronosticás EMPATE; si no, no lo guardamos.
+        if (esEliminatoria(p.jornada) && parseInt(lv) === parseInt(vv)) { const sel = document.getElementById(`pasa-${p.id}`); if (sel) row.pasa = sel.value || null; }
+        else if (esEliminatoria(p.jornada)) { row.pasa = null; }
         toUpsert.push(row);
       } else if (lv === '' && vv === '') {
         toDelete.push(p.id);
@@ -2455,9 +2457,10 @@ function calcScore(pred, result, jornada) {
   let pts = 0;
   if (pred.local === result.local && pred.visit === result.visit) pts = exacto;
   else if (Math.sign(pred.local - pred.visit) === Math.sign(result.local - result.visit)) pts = acierto;
-  // Eliminatoria: el +1/-1 por "quién pasa" aplica SOLO cuando el partido terminó EMPATADO
-  // (se definió por penales). Si fue decisivo, no hay bonus ni penalización por quién pasa.
-  if (esEliminatoria(jornada) && result.local === result.visit && pred.pasa && result.pasa) {
+  // Eliminatoria: el +1/-1 por "quién pasa" aplica SOLO si pronosticaste EMPATE y el partido
+  // TERMINÓ EMPATADO (se definió por penales). Si predijiste un resultado decisivo, o el partido
+  // no terminó empatado, no hay bonus ni penalización por quién pasa.
+  if (esEliminatoria(jornada) && pred.local === pred.visit && result.local === result.visit && pred.pasa && result.pasa) {
     pts += (pred.pasa === result.pasa) ? PRODE_PASA_PTS : -PRODE_PASA_PTS;
   }
   return pts;
