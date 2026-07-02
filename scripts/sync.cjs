@@ -93,8 +93,27 @@ const ymd = d => d.toISOString().slice(0, 10).replace(/-/g, '');
     const matchId = partido.id;
 
     // Resultado (desde ESPN) — solo con service key (la tabla results es admin-only)
-    const gl = Number(home.score), gv = Number(away.score);
-    // "Quién pasó" (solo eliminatoria, jornada>=4): el competidor con winner:true (decide penales incl.)
+    let gl = Number(home.score), gv = Number(away.score);
+    const st = e.status?.type?.name || '';
+    const trasLos90 = st === 'STATUS_FINAL_AET' || st === 'STATUS_FINAL_PEN' || st === 'STATUS_FINAL_ET';
+    let summary = null;  // se reusa para las stats
+    if (trasLos90) {
+      // El .score incluye los goles de la PRÓRROGA → el prode se puntúa con el marcador de los 90'
+      // (los goles de períodos 1 y 2). El del alargue no cuenta para el resultado, solo el "quién pasó".
+      try {
+        summary = await (await fetch(`${ESPN_API}/summary?event=${e.id}`)).json();
+        let rl = 0, rv = 0;
+        for (const kev of (summary.keyEvents || [])) {
+          if (!kev.scoringPlay || (kev.period?.number || 99) > 2) continue;   // solo 90' (no prórroga/penales)
+          const own = /own goal/i.test(kev.type?.text || '');
+          let benef = kev.team?.displayName;
+          if (own) benef = (benef === home.team.displayName) ? away.team.displayName : home.team.displayName;
+          if (benef === home.team.displayName) rl++; else if (benef === away.team.displayName) rv++;
+        }
+        gl = rl; gv = rv;
+      } catch (err) { console.log(`  ⚠️ 90' ${matchId}: ${err.message}`); }
+    }
+    // "Quién pasó" (solo eliminatoria, jornada>=4): el competidor con winner:true (decide prórroga/penales)
     let pasaES = null;
     if (partido.jornada >= 4) {
       const w = comp.competitors.find(c => c.winner);
@@ -104,13 +123,13 @@ const ymd = d => d.toISOString().slice(0, 10).replace(/-/g, '');
       const row = { match_id: matchId, goals_local: gl, goals_visit: gv, updated_at: now.toISOString() };
       if (pasaES) row.pasa = pasaES;
       const r = await sbUpsert('results', [row], 'match_id');
-      if (r.ok) { res++; if (pasaES) console.log(`  🔑 ${matchId} ${gl}-${gv}: pasó ${pasaES}`); }
+      if (r.ok) { res++; if (pasaES) console.log(`  🔑 ${matchId} ${gl}-${gv}${trasLos90 ? ' (90min)' : ''}: pasó ${pasaES}`); }
       else console.log(`  ❌ result ${matchId}: ${r.status} ${r.body}`);
     }
 
     // Stats + notas (skip si ya tiene notas cargadas)
     if (await tieneNotas(matchId)) { skip++; continue; }
-    const summary = await (await fetch(`${ESPN_API}/summary?event=${e.id}`)).json();
+    if (!summary) summary = await (await fetch(`${ESPN_API}/summary?event=${e.id}`)).json();
     const arr = buildStatsFromESPN(summary);
     if (!arr.length) continue;
     let conNotas = false;
