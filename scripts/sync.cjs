@@ -17,6 +17,7 @@ const src = [
   ex(/const FIXTURE = \{[\s\S]*?\n\};/, 'FIXTURE'),
   ex(/const TEAM_API_MAP = \{[\s\S]*?\n\};/, 'TEAM_API_MAP'),
   ex(/function gdtSlug\(str\) \{[\s\S]*?\n\}/, 'gdtSlug'),
+  ex(/^function teamName\(group, ref\).*$/m, 'teamName'),
   ex(/const ESPN_API[\s\S]*?async function espnFindEvent\(matchId\) \{[\s\S]*?\n\}/, 'espn'),
   ex(/function buildStatsFromESPN\(summary\) \{[\s\S]*?\n\}/, 'buildStatsFromESPN'),
   ex(/function dedupeStatsRows\(rows\) \{[\s\S]*?\n\}/, 'dedupeStatsRows'),
@@ -55,10 +56,12 @@ async function tieneNotas(matchId) {
   return Array.isArray(j) && j.length > 0;
 }
 
-function fixtureMatchId(localES, visitES) {
+// equipo de un partido: número = índice al array equipos (grupos); string = nombre directo (eliminatorias)
+const teamOf = (g, ref) => typeof ref === 'number' ? g.equipos[ref] : ref;
+function fixtureMatch(localES, visitES) {
   for (const g of Object.values(FIXTURE))
     for (const p of g.partidos)
-      if (g.equipos[p.local] === localES && g.equipos[p.visit] === visitES) return p.id;
+      if (teamOf(g, p.local) === localES && teamOf(g, p.visit) === visitES) return p;
   return null;
 }
 
@@ -72,7 +75,9 @@ const ymd = d => d.toISOString().slice(0, 10).replace(/-/g, '');
   console.log(`[sync] ${DRY ? '(DRY) ' : ''}ventana ${ymd(from)}-${ymd(to)} · resultados:${CAN_RESULTS ? 'ON' : 'OFF (sin service key)'}`);
 
   const data     = await (await fetch(url)).json();
-  const finished = (data.events || []).filter(e => e.status?.type?.name === 'STATUS_FULL_TIME');
+  // 'completed' cubre tiempo completo, prórroga Y penales (STATUS_FINAL_PEN). El score que da
+  // ESPN es el de los 90'/prórroga (NO la tanda); el ganador que avanza es el competidor con winner:true.
+  const finished = (data.events || []).filter(e => e.status?.type?.completed === true);
   console.log(`[sync] partidos terminados en ESPN: ${finished.length}`);
 
   let res = 0, stats = 0, notas = 0, skip = 0;
@@ -83,14 +88,24 @@ const ymd = d => d.toISOString().slice(0, 10).replace(/-/g, '');
     if (!home || !away) continue;
     const homeES = TEAM_API_MAP[home.team.displayName] || home.team.displayName;
     const awayES = TEAM_API_MAP[away.team.displayName] || away.team.displayName;
-    const matchId = fixtureMatchId(homeES, awayES);
-    if (!matchId) { console.log(`  ⚠️ sin mapear: ${homeES} vs ${awayES}`); continue; }
+    const partido = fixtureMatch(homeES, awayES);
+    if (!partido) { console.log(`  ⚠️ sin mapear: ${homeES} vs ${awayES}`); continue; }
+    const matchId = partido.id;
 
     // Resultado (desde ESPN) — solo con service key (la tabla results es admin-only)
     const gl = Number(home.score), gv = Number(away.score);
+    // "Quién pasó" (solo eliminatoria, jornada>=4): el competidor con winner:true (decide penales incl.)
+    let pasaES = null;
+    if (partido.jornada >= 4) {
+      const w = comp.competitors.find(c => c.winner);
+      if (w) pasaES = TEAM_API_MAP[w.team.displayName] || w.team.displayName;
+    }
     if (CAN_RESULTS && Number.isFinite(gl) && Number.isFinite(gv)) {
-      const r = await sbUpsert('results', [{ match_id: matchId, goals_local: gl, goals_visit: gv, updated_at: now.toISOString() }], 'match_id');
-      if (r.ok) res++; else console.log(`  ❌ result ${matchId}: ${r.status} ${r.body}`);
+      const row = { match_id: matchId, goals_local: gl, goals_visit: gv, updated_at: now.toISOString() };
+      if (pasaES) row.pasa = pasaES;
+      const r = await sbUpsert('results', [row], 'match_id');
+      if (r.ok) { res++; if (pasaES) console.log(`  🔑 ${matchId} ${gl}-${gv}: pasó ${pasaES}`); }
+      else console.log(`  ❌ result ${matchId}: ${r.status} ${r.body}`);
     }
 
     // Stats + notas (skip si ya tiene notas cargadas)
