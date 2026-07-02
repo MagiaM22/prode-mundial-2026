@@ -1338,7 +1338,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-07-01a';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-07-01b';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -2130,7 +2130,7 @@ function renderPredictionsSection() {
 
 function loadMyPredictions() {
   if (!currentUser) return;
-  const myPreds = getPredsByUser(currentUser.id);
+  const myPreds = getUserBestPreds(currentUser.id);   // unión de TODOS sus torneos (no solo el activo)
   const results = _results || {};
   updatePredProgress(myPreds);
 
@@ -2233,7 +2233,7 @@ async function savePredictions() {
       if (!lEl || !vEl) continue;
       const lv = lEl.value.trim(), vv = vEl.value.trim();
       if (lv !== '' && vv !== '') {
-        const row = { user_id: currentUser.id, match_id: p.id, tournament_id: activeTournament.id, goals_local: parseInt(lv), goals_visit: parseInt(vv) };
+        const row = { user_id: currentUser.id, match_id: p.id, tournament_id: DEFAULT_TOURNAMENT_ID, goals_local: parseInt(lv), goals_visit: parseInt(vv) };
         // "Quién pasa" solo tiene sentido si pronosticás EMPATE; si no, no lo guardamos.
         if (esEliminatoria(p.jornada) && parseInt(lv) === parseInt(vv)) { const sel = document.getElementById(`pasa-${p.id}`); if (sel) row.pasa = sel.value || null; }
         else if (esEliminatoria(p.jornada)) { row.pasa = null; }
@@ -2246,9 +2246,9 @@ async function savePredictions() {
   // Red de seguridad: si el formulario está vacío pero el usuario YA tenía
   // varios pronósticos cargados, casi seguro es un glitch de carga/torneo.
   // No borramos nada para no perder datos.
-  const yaCargados = Object.keys(getPredsByUser(currentUser.id)).length;
+  const yaCargados = Object.keys(getUserBestPreds(currentUser.id)).length;
   if (toUpsert.length === 0 && yaCargados >= 3 && toDelete.length >= yaCargados) {
-    showToast('⚠️ No guardé: el formulario está vacío pero tenés pronósticos cargados. Recargá la página (F5) y fijate el torneo.');
+    showToast('⚠️ No guardé: el formulario está vacío pero tenés pronósticos cargados. Recargá la página (F5).');
     return;
   }
   try {
@@ -2263,11 +2263,12 @@ async function savePredictions() {
     }
     if (toDelete.length > 0) {
       const { error } = await sb.from('predictions')
-        .delete().eq('user_id', currentUser.id).eq('tournament_id', activeTournament.id).in('match_id', toDelete);
+        .delete().eq('user_id', currentUser.id).in('match_id', toDelete);   // borrar de TODOS sus torneos
       if (error) throw error;
     }
+    _globalPredictions = await sbFetchAll('predictions', '*');   // recargar la unión (fuente del form)
     await loadPredictions();
-    updatePredProgress(getPredsByUser(currentUser.id));
+    loadMyPredictions();                                         // re-render con lo guardado
     showToast('✅ Pronósticos guardados');
   } catch(err) {
     showToast('❌ Error al guardar: ' + err.message);
@@ -2670,17 +2671,23 @@ function renderTop10(scores, leader) {
   }).join('');
 }
 
-// Mejor pronóstico por partido de un usuario (unión de sus torneos, el que más puntúa).
+// Pronóstico "vigente" por partido de un usuario, UNIENDO todos sus torneos (los pronósticos
+// quedaron repartidos por un bug viejo). Partido ya jugado → el que más puntúa (nadie pierde puntos).
+// Partido sin jugar → el del torneo por DEFECTO (donde se guardan los nuevos), así lo que editás se ve.
 function getUserBestPreds(userId) {
   const results = _results || {};
-  const mp = {};
+  const mp = {}, mpTid = {};
   for (const p of (_globalPredictions || [])) {
     if (p.user_id !== userId) continue;
     const pred = { local: p.goals_local, visit: p.goals_visit, pasa: p.pasa || undefined };
-    const prev = mp[p.match_id];
-    if (!prev) { mp[p.match_id] = pred; continue; }
-    const res = results[p.match_id], j = gdtMatchJornada(p.match_id);
-    if (res && calcScore(pred, res, j) > calcScore(prev, res, j)) mp[p.match_id] = pred;
+    const prev = mp[p.match_id], res = results[p.match_id];
+    if (!prev) { mp[p.match_id] = pred; mpTid[p.match_id] = p.tournament_id; continue; }
+    if (res) {   // jugado → el que más puntúa
+      const j = gdtMatchJornada(p.match_id);
+      if (calcScore(pred, res, j) > calcScore(prev, res, j)) { mp[p.match_id] = pred; mpTid[p.match_id] = p.tournament_id; }
+    } else if (p.tournament_id === DEFAULT_TOURNAMENT_ID && mpTid[p.match_id] !== DEFAULT_TOURNAMENT_ID) {
+      mp[p.match_id] = pred; mpTid[p.match_id] = p.tournament_id;   // sin jugar → priorizar el torneo por defecto
+    }
   }
   return mp;
 }
