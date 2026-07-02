@@ -1334,7 +1334,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-06-28i';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-07-01a';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -2153,11 +2153,12 @@ function loadMyPredictions() {
         const label = pts > 0 ? `${pts >= exacto ? '✅' : '⚡'} +${pts}pts` : (pred.local !== undefined ? `${pts < 0 ? '😬' : '❌'} ${pts}pts` : '—');
         ptsHtml = `<span class="pts-indicator ${cls}">${label}</span>`;
       }
+      const isDrawPred = lv !== '' && vv !== '' && String(lv) === String(vv);
       const koPasa = esEliminatoria(p.jornada) ? (isMatchLocked(p)
         ? (pred.pasa ? `<div class="match-meta" style="margin-top:0.3rem"><span>🔑 Pasa (tu pronóstico): <b>${esc(pred.pasa)}</b></span></div>` : '')
         : (_pasaCol
-          ? `<div class="match-meta" style="margin-top:0.4rem;align-items:center;gap:0.4rem">
-              <span>🔑 Si empatás, ¿quién pasa?</span>
+          ? `<div id="pasa-wrap-${p.id}" class="match-meta" style="margin-top:0.4rem;align-items:center;gap:0.4rem;display:${isDrawPred ? '' : 'none'}">
+              <span>🔑 ¿Quién pasa?</span>
               <select id="pasa-${p.id}" class="score-input" style="width:auto;min-width:130px;padding:2px 6px">
                 <option value="">—</option>
                 <option value="${esc(local)}" ${pred.pasa === local ? 'selected' : ''}>${esc(local)}</option>
@@ -2189,10 +2190,10 @@ function loadMyPredictions() {
                    </div>`
                 : `<div class="score-input-wrap">
                     <input type="number" class="score-input" min="0" max="20" value="${lv}"
-                      id="pr-${p.id}-l">
+                      id="pr-${p.id}-l" oninput="togglePasaSel('${p.id}')">
                     <span class="score-sep">-</span>
                     <input type="number" class="score-input" min="0" max="20" value="${vv}"
-                      id="pr-${p.id}-v">
+                      id="pr-${p.id}-v" oninput="togglePasaSel('${p.id}')">
                    </div>`
               }
             </div>
@@ -2429,6 +2430,16 @@ async function _doSaveResult(matchId) {
 // ============================================================
 // LEADERBOARD
 // ============================================================
+function togglePasaSel(matchId) {
+  const l = document.getElementById(`pr-${matchId}-l`);
+  const v = document.getElementById(`pr-${matchId}-v`);
+  const wrap = document.getElementById(`pasa-wrap-${matchId}`);
+  const sel  = document.getElementById(`pasa-${matchId}`);
+  if (!wrap) return;
+  const isDraw = l && v && l.value !== '' && v.value !== '' && l.value === v.value;
+  wrap.style.display = isDraw ? '' : 'none';
+  if (!isDraw && sel) sel.value = '';
+}
 function calcScore(pred, result, jornada) {
   if (!pred || !result) return 0;
   if (pred.local === undefined || pred.visit === undefined) return 0;
