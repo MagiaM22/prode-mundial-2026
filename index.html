@@ -1338,7 +1338,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-07-02c';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-07-04a';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -1567,6 +1567,21 @@ const FIXTURE = {
       {id:'R32-14', local:'Australia',      visit:'Egipto',         jornada:4, fecha:'2026-07-03', hora:'15:00', ronda:'16avos'},
       {id:'R32-15', local:'Argentina',      visit:'Cabo Verde',     jornada:4, fecha:'2026-07-03', hora:'19:00', ronda:'16avos'},
       {id:'R32-16', local:'Colombia',       visit:'Ghana',          jornada:4, fecha:'2026-07-03', hora:'22:30', ronda:'16avos'},
+    ]
+  },
+  // ── Octavos de final: jornada 5 (cuentan junto con 16avos en la fecha "16avos y Octavos"). ──
+  OCT: {
+    nombre: 'Octavos de final', flag: '🏆',
+    equipos: [],
+    partidos: [
+      {id:'R16-1', local:'Canadá',         visit:'Marruecos',   jornada:5, fecha:'2026-07-04', hora:'14:00', ronda:'Octavos'},
+      {id:'R16-2', local:'Paraguay',       visit:'Francia',     jornada:5, fecha:'2026-07-04', hora:'18:00', ronda:'Octavos'},
+      {id:'R16-3', local:'Brasil',         visit:'Noruega',     jornada:5, fecha:'2026-07-05', hora:'17:00', ronda:'Octavos'},
+      {id:'R16-4', local:'México',         visit:'Inglaterra',  jornada:5, fecha:'2026-07-05', hora:'21:00', ronda:'Octavos'},
+      {id:'R16-5', local:'Portugal',       visit:'España',      jornada:5, fecha:'2026-07-06', hora:'16:00', ronda:'Octavos'},
+      {id:'R16-6', local:'Estados Unidos', visit:'Bélgica',     jornada:5, fecha:'2026-07-06', hora:'21:00', ronda:'Octavos'},
+      {id:'R16-7', local:'Argentina',      visit:'Egipto',      jornada:5, fecha:'2026-07-07', hora:'13:00', ronda:'Octavos'},
+      {id:'R16-8', local:'Suiza',          visit:'Colombia',    jornada:5, fecha:'2026-07-07', hora:'17:00', ronda:'Octavos'},
     ]
   },
 };
@@ -4449,7 +4464,7 @@ const GDT_SWAP_ENFORCE_FROM = 4;
 // reemplazarlos (el reemplazo es gratis, no gasta cambios). Agregar acá cuando una queda
 // afuera. Los nombres deben coincidir EXACTO con 'seleccion' de GDT_PLAYERS.
 // Ej.: const GDT_ELIMINADAS = ['Sudáfrica', 'Catar'];
-const GDT_ELIMINADAS = ['Arabia Saudita', 'Catar', 'Corea del Sur', 'Curazao', 'Escocia', 'Haití', 'Irak', 'Irán', 'Jordania', 'Nueva Zelanda', 'Panamá', 'Rep. Checa', 'Turquía', 'Túnez', 'Uruguay', 'Uzbekistán'];
+const GDT_ELIMINADAS = ['Alemania', 'Arabia Saudita', 'Argelia', 'Australia', 'Austria', 'Bosnia y Herz.', 'Cabo Verde', 'Catar', 'Corea del Sur', 'Costa de Marfil', 'Croacia', 'Curazao', 'Ecuador', 'Escocia', 'Ghana', 'Haití', 'Irak', 'Irán', 'Japón', 'Jordania', 'Nueva Zelanda', 'Panamá', 'Países Bajos', 'R.D. del Congo', 'Rep. Checa', 'Senegal', 'Sudáfrica', 'Suecia', 'Turquía', 'Túnez', 'Uruguay', 'Uzbekistán'];
 function gdtIsEliminado(p) { return !!p && GDT_ELIMINADAS.includes(p.seleccion); }
 function gdtSquadEliminados() { return [..._gdtLineup, ..._gdtBench].filter(id => gdtIsEliminado(gdtPlayerById(id))); }
 const GDT_ELIM_BADGE = ' <span style="color:#ff6b6b;font-weight:700;font-size:0.6rem;background:rgba(255,107,107,0.14);padding:1px 5px;border-radius:4px">AFUERA</span>';
