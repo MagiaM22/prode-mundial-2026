@@ -1338,7 +1338,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-07-04b';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-07-04c';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -1614,16 +1614,14 @@ const GDT_RONDA_MULT = { 4: 1.05, 5: 1.10, 6: 1.20, 7: 1.30, 8: 1.30, 9: 1.50 };
 function gdtRondaMult(j) { return GDT_RONDA_MULT[j] || 1; }
 
 // "Fechas" para las tablas por fecha (ganador de la fecha): cada una agrupa 1 o más jornadas.
-// 16avos (4) y octavos (5) cuentan como UNA sola fecha (se juegan juntos).
+// Grupos: 16avos(4)+octavos(5) = UNA fecha · cuartos(6)+semis(7)+3er(8)+final(9) = UNA fecha.
+// (Los puntos siguen escalando por ronda dentro de cada fecha: cuartos 3/6, final 5/10, GDT +20%…+50%.)
 const FECHAS = [
   { key: '1',   label: 'Fecha 1',          js: [1] },
   { key: '2',   label: 'Fecha 2',          js: [2] },
   { key: '3',   label: 'Fecha 3',          js: [3] },
   { key: '4-5', label: '16avos y Octavos', js: [4, 5] },
-  { key: '6',   label: 'Cuartos',          js: [6] },
-  { key: '7',   label: 'Semis',            js: [7] },
-  { key: '8',   label: '3er puesto',       js: [8] },
-  { key: '9',   label: 'Final',            js: [9] },
+  { key: '6-9', label: 'Cuartos a la Final', js: [6, 7, 8, 9] },
 ];
 function fechaByKey(k) { return FECHAS.find(f => f.key === String(k)) || null; }
 function fechaLabel(k) { const f = fechaByKey(k); return f ? f.label : jornadaLabel(k); }
