@@ -105,10 +105,10 @@ const ymd = d => d.toISOString().slice(0, 10).replace(/-/g, '');
         let rl = 0, rv = 0;
         for (const kev of (summary.keyEvents || [])) {
           if (!kev.scoringPlay || (kev.period?.number || 99) > 2) continue;   // solo 90' (no prórroga/penales)
-          const own = /own goal/i.test(kev.type?.text || '');
-          let benef = kev.team?.displayName;
-          if (own) benef = (benef === home.team.displayName) ? away.team.displayName : home.team.displayName;
-          if (benef === home.team.displayName) rl++; else if (benef === away.team.displayName) rv++;
+          // ESPN pone kev.team = el equipo que SE ANOTA el gol (incluso en goles en contra el
+          // team ya es el beneficiario). Se cuenta para ese equipo tal cual, sin invertir.
+          const t = kev.team?.displayName;
+          if (t === home.team.displayName) rl++; else if (t === away.team.displayName) rv++;
         }
         gl = rl; gv = rv;
       } catch (err) { console.log(`  ⚠️ 90' ${matchId}: ${err.message}`); }
