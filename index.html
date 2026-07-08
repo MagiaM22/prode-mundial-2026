@@ -1338,7 +1338,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-07-04d';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-07-04e';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -1680,9 +1680,12 @@ const PRODE_PTS = { 1: [1, 3], 2: [1, 3], 3: [1, 3], 4: [2, 4], 5: [2, 4], 6: [3
 function prodePts(j) { return PRODE_PTS[j] || [1, 3]; }
 const PRODE_PASA_PTS = 1;   // +/- por acertar/errar quién pasa cuando pronosticás empate (eliminatoria)
 
-// GRAN DT: multiplicador de puntos por ronda eliminatoria (16avos +5% … final +50%; 3er puesto = nivel semi +30%).
-const GDT_RONDA_MULT = { 4: 1.05, 5: 1.10, 6: 1.20, 7: 1.30, 8: 1.30, 9: 1.50 };
+// GRAN DT: multiplicador de puntos por ronda eliminatoria (16avos +5%, octavos +10%, cuartos +20%, semis +25%, final +30%).
+// El 3er puesto (jornada 8) NO cuenta para el Gran DT (ver GDT_JORNADAS_NO_CUENTAN); sí cuenta para el prode.
+const GDT_RONDA_MULT = { 4: 1.05, 5: 1.10, 6: 1.20, 7: 1.25, 9: 1.30 };
 function gdtRondaMult(j) { return GDT_RONDA_MULT[j] || 1; }
+// Jornadas que NO puntúan para el Gran DT (pero sí para el prode). El 3er puesto es amistoso a los fines del GDT.
+const GDT_JORNADAS_NO_CUENTAN = [8];
 
 // "Fechas" para las tablas por fecha (ganador de la fecha): cada una agrupa 1 o más jornadas.
 // Grupos: 16avos(4)+octavos(5) = UNA fecha · cuartos(6)+semis(7)+3er(8)+final(9) = UNA fecha.
@@ -5340,8 +5343,9 @@ function gdtPlayerPlayed(playerId, matchId) {
   return stat.minutes_played > 0 || stat.goals > 0 || stat.assists > 0 || stat.is_mvp;
 }
 
-// Partidos de una jornada que ya tienen stats sincronizadas
+// Partidos de una jornada que ya tienen stats sincronizadas (vacío si la jornada no cuenta para el GDT, ej. 3er puesto)
 function gdtJornadaMatchIds(j) {
+  if (GDT_JORNADAS_NO_CUENTAN.includes(j)) return [];
   return Object.keys(_gdtMatchStats || {}).filter(mid => gdtMatchJornada(mid) === j);
 }
 // ¿El jugador jugó en algún partido de esos? / ¿cuántos puntos sumó?
@@ -5592,6 +5596,7 @@ function calcTeamOfWeek(filtro) {
   for (const group of Object.values(FIXTURE)) {
     for (const partido of group.partidos) {
       if (!enFecha(partido.jornada, filtro)) continue;
+      if (GDT_JORNADAS_NO_CUENTAN.includes(partido.jornada)) continue;   // 3er puesto no cuenta para el GDT
       const statsList = _gdtMatchStats?.[partido.id];
       if (!statsList) continue;
       matchesConStats++;
