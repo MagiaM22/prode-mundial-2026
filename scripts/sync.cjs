@@ -17,7 +17,7 @@ const src = [
   ex(/const FIXTURE = \{[\s\S]*?\n\};/, 'FIXTURE'),
   ex(/const TEAM_API_MAP = \{[\s\S]*?\n\};/, 'TEAM_API_MAP'),
   ex(/function gdtSlug\(str\) \{[\s\S]*?\n\}/, 'gdtSlug'),
-  ex(/^function teamName\(group, ref\).*$/m, 'teamName'),
+  ex(/^function teamName\(group, ref\) \{[\s\S]*?function partidoDefinido\(group, p\) \{[\s\S]*?\n\}/m, 'teamName+cuadro'),
   ex(/const ESPN_API[\s\S]*?async function espnFindEvent\(matchId\) \{[\s\S]*?\n\}/, 'espn'),
   ex(/function buildStatsFromESPN\(summary\) \{[\s\S]*?\n\}/, 'buildStatsFromESPN'),
   ex(/function dedupeStatsRows\(rows\) \{[\s\S]*?\n\}/, 'dedupeStatsRows'),
@@ -56,12 +56,12 @@ async function tieneNotas(matchId) {
   return Array.isArray(j) && j.length > 0;
 }
 
-// equipo de un partido: número = índice al array equipos (grupos); string = nombre directo (eliminatorias)
-const teamOf = (g, ref) => typeof ref === 'number' ? g.equipos[ref] : ref;
+// Mapea por nombre resuelto. teamName resuelve grupos (índice), eliminatorias con nombre (string)
+// y cruces del cuadro ({w:'ID'}/{l:'ID'}) contra globalThis._results (cargado abajo).
 function fixtureMatch(localES, visitES) {
   for (const g of Object.values(FIXTURE))
     for (const p of g.partidos)
-      if (teamOf(g, p.local) === localES && teamOf(g, p.visit) === visitES) return p;
+      if (teamName(g, p.local) === localES && teamName(g, p.visit) === visitES) return p;
   return null;
 }
 
@@ -79,6 +79,15 @@ const ymd = d => d.toISOString().slice(0, 10).replace(/-/g, '');
   // ESPN es el de los 90'/prórroga (NO la tanda); el ganador que avanza es el competidor con winner:true.
   const finished = (data.events || []).filter(e => e.status?.type?.completed === true);
   console.log(`[sync] partidos terminados en ESPN: ${finished.length}`);
+
+  // Resultados ya guardados → resuelven los cruces del cuadro ({w:'ID'}/{l:'ID'}) para mapear cuartos→final.
+  try {
+    const rr = await (await fetch(`${SB}/rest/v1/results?select=match_id,goals_local,goals_visit,pasa`, { headers: sbHeaders })).json();
+    const map = {};
+    for (const r of (Array.isArray(rr) ? rr : [])) map[r.match_id] = { local: r.goals_local, visit: r.goals_visit, pasa: r.pasa || undefined };
+    globalThis._results = map;
+    console.log(`[sync] resultados previos: ${Object.keys(map).length} (resuelven el cuadro)`);
+  } catch (e) { globalThis._results = {}; console.log('[sync] ⚠️ resultados previos: ' + e.message); }
 
   let res = 0, stats = 0, notas = 0, skip = 0;
   for (const e of finished) {
@@ -123,7 +132,7 @@ const ymd = d => d.toISOString().slice(0, 10).replace(/-/g, '');
       const row = { match_id: matchId, goals_local: gl, goals_visit: gv, updated_at: now.toISOString() };
       if (pasaES) row.pasa = pasaES;
       const r = await sbUpsert('results', [row], 'match_id');
-      if (r.ok) { res++; if (pasaES) console.log(`  🔑 ${matchId} ${gl}-${gv}${trasLos90 ? ' (90min)' : ''}: pasó ${pasaES}`); }
+      if (r.ok) { res++; globalThis._results[matchId] = { local: gl, visit: gv, pasa: pasaES || undefined }; if (pasaES) console.log(`  🔑 ${matchId} ${gl}-${gv}${trasLos90 ? ' (90min)' : ''}: pasó ${pasaES}`); }
       else console.log(`  ❌ result ${matchId}: ${r.status} ${r.body}`);
     }
 

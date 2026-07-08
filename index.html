@@ -1338,7 +1338,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-07-04c';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-07-04d';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = false;
@@ -1584,13 +1584,84 @@ const FIXTURE = {
       {id:'R16-8', local:'Suiza',          visit:'Colombia',    jornada:5, fecha:'2026-07-07', hora:'17:00', ronda:'Octavos'},
     ]
   },
+  // ── Cuartos a la Final: los equipos se resuelven SOLOS desde "quién pasó". {w:'ID'}=ganador · {l:'ID'}=perdedor.
+  // El cuadro (qué ganador va a qué llave) está verificado contra ESPN.
+  CUA: {
+    nombre: 'Cuartos de final', flag: '🏆', equipos: [],
+    partidos: [
+      {id:'QF-1', local:{w:'R16-2'}, visit:{w:'R16-1'}, jornada:6, fecha:'2026-07-09', hora:'17:00', ronda:'Cuartos'},
+      {id:'QF-2', local:{w:'R16-5'}, visit:{w:'R16-6'}, jornada:6, fecha:'2026-07-10', hora:'16:00', ronda:'Cuartos'},
+      {id:'QF-3', local:{w:'R16-3'}, visit:{w:'R16-4'}, jornada:6, fecha:'2026-07-11', hora:'18:00', ronda:'Cuartos'},
+      {id:'QF-4', local:{w:'R16-7'}, visit:{w:'R16-8'}, jornada:6, fecha:'2026-07-11', hora:'22:00', ronda:'Cuartos'},
+    ]
+  },
+  SEM: {
+    nombre: 'Semifinales', flag: '🏆', equipos: [],
+    partidos: [
+      {id:'SF-1', local:{w:'QF-1'}, visit:{w:'QF-2'}, jornada:7, fecha:'2026-07-14', hora:'16:00', ronda:'Semis'},
+      {id:'SF-2', local:{w:'QF-3'}, visit:{w:'QF-4'}, jornada:7, fecha:'2026-07-15', hora:'16:00', ronda:'Semis'},
+    ]
+  },
+  TER: {
+    nombre: '3er puesto', flag: '🥉', equipos: [],
+    partidos: [
+      {id:'TP-1', local:{l:'SF-1'}, visit:{l:'SF-2'}, jornada:8, fecha:'2026-07-18', hora:'18:00', ronda:'3er puesto'},
+    ]
+  },
+  FIN: {
+    nombre: 'Final', flag: '🏆', equipos: [],
+    partidos: [
+      {id:'FIN-1', local:{w:'SF-1'}, visit:{w:'SF-2'}, jornada:9, fecha:'2026-07-19', hora:'16:00', ronda:'Final'},
+    ]
+  },
 };
 
 const TOTAL_MATCHES = Object.values(FIXTURE).reduce((n, g) => n + g.partidos.length, 0);
 
 // Resuelve el nombre del equipo de un partido: si es número, índice al array equipos[] del grupo;
 // si es string, nombre directo (para eliminatorias, donde los cruces no salen de un grupo fijo).
-function teamName(group, ref) { return typeof ref === 'string' ? ref : (group && group.equipos ? (group.equipos[ref] ?? '') : ''); }
+function teamName(group, ref) {
+  if (ref && typeof ref === 'object') return koRefName(ref);   // cruce del cuadro: {w:'R16-2'} ganador · {l:'SF-1'} perdedor
+  return typeof ref === 'string' ? ref : (group && group.equipos ? (group.equipos[ref] ?? '') : '');
+}
+// Busca un partido del fixture por id (con su grupo).
+function _fixtureMatchById(id) {
+  for (const g of Object.values(FIXTURE)) for (const p of g.partidos) if (p.id === id) return { p, g };
+  return null;
+}
+function _koLabel(id) {
+  const n = id.split('-')[1] || '';
+  if (id.startsWith('R16')) return 'Octavos ' + n;
+  if (id.startsWith('QF'))  return 'Cuartos ' + n;
+  if (id.startsWith('SF'))  return 'Semi ' + n;
+  if (id.startsWith('TP'))  return '3er puesto';
+  if (id.startsWith('FIN')) return 'Final';
+  return id;
+}
+// Resuelve el nombre real de un cruce (ganador/perdedor de otro partido) desde 'pasa'.
+// Si aún no se jugó el partido fuente, devuelve un cartel legible ("Ganador Suiza/Colombia" / "Perdedor Semi 1").
+function koRefName(ref) {
+  const res = (typeof _results !== 'undefined' && _results) || {};
+  const srcId = ref.w || ref.l;
+  const found = _fixtureMatchById(srcId);
+  const r = res[srcId];
+  if (r && r.pasa && found) {
+    if (ref.w) return r.pasa;                                  // ganador = quién pasó
+    const a = teamName(found.g, found.p.local), b = teamName(found.g, found.p.visit);
+    return r.pasa === a ? b : (r.pasa === b ? a : '');         // perdedor = el que no pasó
+  }
+  let base = _koLabel(srcId);
+  if (found) {
+    const a = teamName(found.g, found.p.local), b = teamName(found.g, found.p.visit);
+    if (a && b && !/^(Ganador|Perdedor) /.test(a) && !/^(Ganador|Perdedor) /.test(b)) base = a + '/' + b;
+  }
+  return (ref.w ? 'Ganador ' : 'Perdedor ') + base;
+}
+// ¿El partido tiene sus dos equipos definidos (no cartel de "Ganador/Perdedor …")?
+function partidoDefinido(group, p) {
+  const a = teamName(group, p.local), b = teamName(group, p.visit);
+  return !!a && !!b && !/^(Ganador|Perdedor) /.test(a) && !/^(Ganador|Perdedor) /.test(b);
+}
 // Jornadas reales presentes en el FIXTURE (grupos = 1,2,3; eliminatorias = 4,5,6,7,8). Se DERIVA, no se hardcodea.
 function gdtJornadas() {
   const s = new Set();
@@ -2179,6 +2250,7 @@ function loadMyPredictions() {
     for (const p of group.partidos) {
       const local  = teamName(group, p.local);
       const visit  = teamName(group, p.visit);
+      const definido = partidoDefinido(group, p);   // ¿ya se saben los dos equipos? (eliminatorias auto-armadas)
       const pred   = myPreds[p.id] || {};
       const lv     = pred.local !== undefined ? pred.local : '';
       const vv     = pred.visit !== undefined ? pred.visit : '';
@@ -2192,7 +2264,7 @@ function loadMyPredictions() {
         ptsHtml = `<span class="pts-indicator ${cls}">${label}</span>`;
       }
       const isDrawPred = lv !== '' && vv !== '' && String(lv) === String(vv);
-      const koPasa = esEliminatoria(p.jornada) ? (isMatchLocked(p)
+      const koPasa = (esEliminatoria(p.jornada) && definido) ? (isMatchLocked(p)
         ? (pred.pasa ? `<div class="match-meta" style="margin-top:0.3rem"><span>🔑 Pasa (tu pronóstico): <b>${esc(pred.pasa)}</b></span></div>` : '')
         : (_pasaCol
           ? `<div id="pasa-wrap-${p.id}" class="match-meta" style="margin-top:0.4rem;align-items:center;gap:0.4rem;display:${isDrawPred ? '' : 'none'}">
@@ -2221,7 +2293,9 @@ function loadMyPredictions() {
             </div>
             <div style="display:flex;align-items:center;gap:0.4rem">
               ${ptsHtml}
-              ${isMatchLocked(p)
+              ${!definido
+                ? `<div class="score-input-wrap"><span style="font-size:0.82rem;color:var(--text-muted)" title="Se habilita cuando se definan los equipos">⏳ a definir</span></div>`
+                : isMatchLocked(p)
                 ? `<div class="score-input-wrap">
                     <span style="font-size:0.9rem;font-weight:700;color:${lv!==''&&vv!==''?'var(--secondary)':'var(--text-muted)'}">${lv!==''&&vv!=='' ? `${lv} - ${vv}` : '— - —'}</span>
                     <span class="lock-icon" title="Partido bloqueado">🔒</span>
@@ -4463,7 +4537,25 @@ const GDT_SWAP_ENFORCE_FROM = 4;
 // afuera. Los nombres deben coincidir EXACTO con 'seleccion' de GDT_PLAYERS.
 // Ej.: const GDT_ELIMINADAS = ['Sudáfrica', 'Catar'];
 const GDT_ELIMINADAS = ['Alemania', 'Arabia Saudita', 'Argelia', 'Australia', 'Austria', 'Bosnia y Herz.', 'Cabo Verde', 'Catar', 'Corea del Sur', 'Costa de Marfil', 'Croacia', 'Curazao', 'Ecuador', 'Escocia', 'Ghana', 'Haití', 'Irak', 'Irán', 'Japón', 'Jordania', 'Nueva Zelanda', 'Panamá', 'Países Bajos', 'R.D. del Congo', 'Rep. Checa', 'Senegal', 'Sudáfrica', 'Suecia', 'Turquía', 'Túnez', 'Uruguay', 'Uzbekistán'];
-function gdtIsEliminado(p) { return !!p && GDT_ELIMINADAS.includes(p.seleccion); }
+// Selecciones que perdieron un partido de eliminatoria (derivado de los resultados: jugó KO y no pasó).
+// Se combina con la lista manual GDT_ELIMINADAS (que cubre los eliminados en fase de grupos).
+let _elimAutoCache = { key: null, set: new Set() };
+function gdtSeleccionesEliminadasAuto() {
+  const res = (typeof _results !== 'undefined' && _results) || {};
+  const key = Object.values(res).filter(r => r && r.pasa).length + '/' + Object.keys(res).length;
+  if (_elimAutoCache.key === key) return _elimAutoCache.set;   // memo: recalcula solo si cambian los resultados
+  const out = new Set();
+  for (const g of Object.values(FIXTURE)) for (const p of g.partidos) {
+    if (p.jornada < 4) continue;                                // solo eliminatorias
+    const r = res[p.id]; if (!r || !r.pasa) continue;
+    const a = teamName(g, p.local), b = teamName(g, p.visit);
+    if (a && !/^(Ganador|Perdedor) /.test(a) && a !== r.pasa) out.add(a);   // el que no pasó quedó afuera
+    if (b && !/^(Ganador|Perdedor) /.test(b) && b !== r.pasa) out.add(b);
+  }
+  _elimAutoCache = { key, set: out };
+  return out;
+}
+function gdtIsEliminado(p) { return !!p && (GDT_ELIMINADAS.includes(p.seleccion) || gdtSeleccionesEliminadasAuto().has(p.seleccion)); }
 function gdtSquadEliminados() { return [..._gdtLineup, ..._gdtBench].filter(id => gdtIsEliminado(gdtPlayerById(id))); }
 const GDT_ELIM_BADGE = ' <span style="color:#ff6b6b;font-weight:700;font-size:0.6rem;background:rgba(255,107,107,0.14);padding:1px 5px;border-radius:4px">AFUERA</span>';
 let _gdtTransfers  = { fixSeen: false, snap: {} };
