@@ -1338,7 +1338,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-07-04h';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-07-04i';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = true;
@@ -5899,8 +5899,10 @@ function showWinnerAnnouncement(cfg) {
   const c = cfg || WINNER_ANNOUNCE || {};
   const img = document.getElementById('winner-image');
   if (c.imagen) { img.style.display = ''; img.onerror = () => { img.onerror = () => { img.style.display = 'none'; }; setTimeout(() => { img.src = c.imagen; }, 2500); }; img.src = c.imagen + '?v=' + APP_VERSION; } else { img.style.display = 'none'; }
-  // Ajustar tamaño: Grande solo para Gran DT
-  if (c === WINNER_ANNOUNCE_GDT) { img.style.maxWidth = '500px'; img.style.width = '90%'; } else { img.style.maxWidth = '340px'; img.style.width = '80%'; }
+  // Ajustar tamaño: Grande solo para Gran DT. width auto + maxHeight limitan el alto en notebooks sin deformar.
+  if (c === WINNER_ANNOUNCE_GDT) { img.style.maxWidth = 'min(500px, 90%)'; } else { img.style.maxWidth = 'min(340px, 80%)'; }
+  img.style.width = 'auto';
+  img.style.maxHeight = '52vh';
   document.getElementById('winner-label').textContent = c.label || 'Ganador del Torneo';
   document.getElementById('winner-tournament-name').textContent = '';
   document.getElementById('winner-name-display').textContent = c.nombres || '';
