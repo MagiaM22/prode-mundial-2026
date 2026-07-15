@@ -1298,7 +1298,7 @@
   <canvas id="confetti-canvas" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"></canvas>
   <div style="position:relative; text-align:center; padding:2rem; max-width:600px; width:90%">
     
-    <img id="winner-image" src="" alt="" onerror="this.style.display='none'" style="display:none; max-width:340px; width:80%; border-radius:14px; margin:0 auto 1.2rem; box-shadow:0 10px 40px rgba(0,0,0,0.6); border:2px solid var(--secondary)">
+    <img id="winner-image" src="" alt="" style="display:none; max-width:340px; width:80%; border-radius:14px; margin:0 auto 1.2rem; box-shadow:0 10px 40px rgba(0,0,0,0.6); border:2px solid var(--secondary)">
     <div id="winner-label" style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.15em; color:rgba(255,255,255,0.45); margin-bottom:0.75rem">Ganador del Torneo</div>
     <div id="winner-tournament-name" style="font-size:0.95rem; color:var(--secondary); margin-bottom:1rem; font-weight:600"></div>
     <div id="winner-name-display" style="font-size:3rem; font-weight:900; color:#fff; text-shadow:0 0 40px rgba(201,170,113,0.8); margin-bottom:0.4rem; line-height:1.1"></div>
@@ -1338,7 +1338,7 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-07-04g';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-07-04h';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = true;
@@ -2694,12 +2694,6 @@ function renderLeaderboard() {
   document.getElementById('tabla-stats').textContent =
     `${resultsCount}/${TOTAL_MATCHES} resultados · ${participants.length} participantes`;
   const container = document.getElementById('leaderboard-container');
-  if (STANDINGS_HIDDEN) {
-    container.innerHTML = STANDINGS_TEASER;
-    const t10 = document.getElementById('top10-container'); if (t10) t10.innerHTML = STANDINGS_TEASER;
-    renderTorneoStats(resultsCount, participants.length, 0);
-    return;
-  }
   if (participants.length === 0) {
     container.innerHTML = `<div class="empty-state"><div class="icon">🏆</div><h3>No hay participantes</h3><p>Todavía nadie se registró.</p></div>`;
     renderTop10([], 0); renderTorneoStats(0, 0, 0);
@@ -2709,6 +2703,12 @@ function renderLeaderboard() {
   const leader = scores[0]?.total || 0;
   const tab = (k, label) => `<button class="btn btn-sm ${_prodeLbJornada===k?'btn-gold':'btn-ghost'}" onclick="setProdeLbJornada(${k===null?'null':`'${k}'`})">${label}</button>`;
   const selector = `<div class="flex-gap" style="margin-bottom:0.75rem;flex-wrap:wrap">${tab(null,'🏆 General')}${fechasPresentes().map(f => tab(f.key, f.label)).join('')}</div>`;
+  if (STANDINGS_HIDDEN && _prodeLbJornada == null) {   // tabla General tapada, las fechas se ven normales
+    container.innerHTML = selector + STANDINGS_TEASER;
+    const t10 = document.getElementById('top10-container'); if (t10) t10.innerHTML = STANDINGS_TEASER;
+    renderTorneoStats(resultsCount, participants.length, 0);
+    return;
+  }
   if (fechaOcultaKey(_prodeLbJornada)) {   // fecha oculta: mostrar cartel "se anuncia pronto", no la tabla
     container.innerHTML = selector + STANDINGS_TEASER;
     const t10 = document.getElementById('top10-container'); if (t10) t10.innerHTML = STANDINGS_TEASER;
@@ -5404,7 +5404,6 @@ function renderGDTLeaderboard() {
   const container    = document.getElementById('gdt-leaderboard');
   const statsEl      = document.getElementById('gdt-lb-stats');
   if (!container) return;
-  if (STANDINGS_HIDDEN) { container.innerHTML = STANDINGS_TEASER; if (statsEl) statsEl.textContent = ''; return; }
 
   // El Gran DT es global: listamos a TODOS los que armaron equipo (no depende del torneo)
   const rows = Object.keys(_gdtAllTeams || {}).map(uid => {
@@ -5420,6 +5419,7 @@ function renderGDTLeaderboard() {
   const tab = (k, label) => `<button class="btn btn-sm ${_gdtLbJornada===k?'btn-gold':'btn-ghost'}" onclick="setGDTLbJornada(${k===null?'null':`'${k}'`})">${label}</button>`;
   const selector = `<div class="flex-gap" style="margin-bottom:0.75rem;flex-wrap:wrap">${tab(null,'🏆 General')}${fechasPresentes().map(f => tab(f.key, f.label)).join('')}</div>`;
 
+  if (STANDINGS_HIDDEN && _gdtLbJornada == null) { container.innerHTML = selector + STANDINGS_TEASER; if (statsEl) statsEl.textContent = ''; return; }   // tabla General tapada
   if (fechaOcultaKey(_gdtLbJornada)) { container.innerHTML = selector + STANDINGS_TEASER; if (statsEl) statsEl.textContent = ''; return; }   // fecha oculta
   if (!rows.length) { container.innerHTML = selector + `<div class="empty-state"><div class="icon">🏆</div><h3>Todavía nadie armó su equipo</h3><p>Andá a "Mi Equipo" y armá el tuyo.</p></div>`; return; }
 
@@ -5898,7 +5898,7 @@ let _confettiAnim = null;
 function showWinnerAnnouncement(cfg) {
   const c = cfg || WINNER_ANNOUNCE || {};
   const img = document.getElementById('winner-image');
-  if (c.imagen) { img.src = c.imagen + '?v=' + APP_VERSION; img.style.display = ''; } else { img.style.display = 'none'; }
+  if (c.imagen) { img.style.display = ''; img.onerror = () => { img.onerror = () => { img.style.display = 'none'; }; setTimeout(() => { img.src = c.imagen; }, 2500); }; img.src = c.imagen + '?v=' + APP_VERSION; } else { img.style.display = 'none'; }
   // Ajustar tamaño: Grande solo para Gran DT
   if (c === WINNER_ANNOUNCE_GDT) { img.style.maxWidth = '500px'; img.style.width = '90%'; } else { img.style.maxWidth = '340px'; img.style.width = '80%'; }
   document.getElementById('winner-label').textContent = c.label || 'Ganador del Torneo';
