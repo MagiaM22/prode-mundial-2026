@@ -1338,10 +1338,10 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-07-04f';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-07-04g';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
-const STANDINGS_HIDDEN = false;
+const STANDINGS_HIDDEN = true;
 // Jornadas cuyos resultados/tablas se ocultan por ahora (para revelar el ganador después). Vaciar para mostrar.
 const HIDDEN_JORNADAS = [];
 function jornadaOculta(j) { return HIDDEN_JORNADAS.includes(j); }
@@ -1350,18 +1350,18 @@ function jornadaOculta(j) { return HIDDEN_JORNADAS.includes(j); }
 // La imagen debe estar en el repo con ese nombre. nombres/sub son texto libre.
 // activo:true → se muestra solo a cada usuario (1 vez por sesión) al entrar. id = key de sesión.
 const WINNER_ANNOUNCE = {
-  activo: false, id: 'prode-f3',
-  label:   'Ganador · Prode Fecha 3',
-  nombres: 'André Mendoza',
-  sub:     '¡El mejor de la Fecha 3! 🏆',
-  imagen:  'ganador3.jpeg',
+  activo: true, id: 'prode-f45',
+  label:   'Ganador · Prode 16avos y Octavos',
+  nombres: 'Marcos Manzi',
+  sub:     '¡El mejor de los 16avos y Octavos! 🏆',
+  imagen:  'chiqui-manzi.jpeg',
 };
 const WINNER_ANNOUNCE_GDT = {
-  activo: false, id: 'gdt-f3',
-  label:   '🏆 Ganador del Gran DT · Fecha 3',
-  nombres: 'Francisco Armas',
-  sub:     '¡El mejor DT de la Fecha 3! ⚽',
-  imagen:  'ganador3-gdt.jpeg',
+  activo: true, id: 'gdt-f45',
+  label:   '🏆 Ganador del Gran DT · 16avos y Octavos',
+  nombres: 'Marcos Manzi',
+  sub:     '¡El mejor DT de los 16avos y Octavos! ⚽',
+  imagen:  'magia-manzi.jpeg',
 };
 // Muestra el anuncio una sola vez por sesión, SOLO si su sección sigue activa al disparar.
 function maybeAutoAnnounce(cfg, sectionId) {
