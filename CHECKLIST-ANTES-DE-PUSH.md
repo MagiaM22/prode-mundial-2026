@@ -3,7 +3,7 @@
 **NUNCA pushear sin verificar TODOS estos puntos:**
 
 ## 1. Integridad de datos (CRÍTICO)
-- [ ] GDT_PLAYERS: Verificar que existan **1248 jugadores** (grep "rating:" debe dar 1248)
+- [ ] GDT_PLAYERS: Verificar que existan **1248 jugadores** (grep "rating:" debe dar **1249**: 1248 jugadores + 1 línea de código del sync en `buildStatsFromESPN`)
 - [ ] GDT_BUDGET: Debe ser 1200
 - [ ] FIXTURE: Los 12 grupos con sus partidos deben estar
 
@@ -15,7 +15,7 @@
 ## 3. Antes de pushear
 ```bash
 # Verificar que tienes los 1248 jugadores
-grep -o "rating:" index.html | wc -l  # Debe dar 1248
+grep -o "rating:" index.html | wc -l  # Debe dar 1249 (1248 jugadores + 1 línea de código del sync)
 
 # Ver qué cambios vas a hacer
 git diff index.html | head -20
