@@ -1338,12 +1338,12 @@ const SUPABASE_URL  = 'https://gfzxjuppjxklhcahsiko.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_cV1C3wNBCByxBFKJY9tJVw_fpwyvQHo';
 const ADMIN_EMAILS  = ['marcosjmanzi@gmail.com', 'federicowf@gmail.com'];
 const DEFAULT_TOURNAMENT_ID = 'c3122dad-50fe-422f-ac5f-dbf79f586873';  // Mundial 2026 real (antes era un ID fantasma que partía los pronósticos)
-const APP_VERSION = '2026-07-16b';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
+const APP_VERSION = '2026-07-16c';   // ⚠️ subir este valor en CADA deploy → fuerza recarga de pestañas viejas
 
 // Tapar las tablas de posiciones (prode y Gran DT) hasta anunciar al ganador. Poner en false para mostrarlas.
 const STANDINGS_HIDDEN = true;
 // Jornadas cuyos resultados/tablas se ocultan por ahora (para revelar el ganador después). Vaciar para mostrar.
-const HIDDEN_JORNADAS = [];
+const HIDDEN_JORNADAS = [1, 2, 3];
 function jornadaOculta(j) { return HIDDEN_JORNADAS.includes(j); }
 
 // Anuncio de ganador: lo muestra el botón "Anunciar Ganador" (solo admin). Editar acá.
